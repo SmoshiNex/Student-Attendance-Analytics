@@ -13,19 +13,22 @@ use PHPMailer\PHPMailer\Exception as PHPMailerException;
 
 class EmailService
 {
-    // ── Brevo SMTP credentials (mirror frontend/.env) ──────────────────────
+    // SMTP settings are loaded from environment variables/.env files.
     private string $host       = 'smtp-relay.brevo.com';
     private int    $port       = 587;
-    private string $username   = '9c81d0001@smtp-brevo.com';
-    private string $password   = 'xsmtpsib-d17b6fe2793bf8b70d6fb1d90a33e4b7efe4de6a2fd306836711fe74a9baff4f-AhBy2ZyAj5tccXh3';
-    private string $fromEmail  = 'hackeryou456@gmail.com';
+    private string $encryption = 'tls';
+    private string $username   = '';
+    private string $password   = '';
+    private string $fromEmail  = '';
     private string $fromName   = 'Smart Campus Attendance';
+    private static ?array $dotEnvCache = null;
 
     private $conn;
 
     public function __construct($db)
     {
         $this->conn = $db;
+        $this->loadMailConfig();
     }
 
     /**
@@ -52,6 +55,7 @@ class EmailService
 
         try {
             $this->requirePHPMailer();
+            $this->assertMailConfig();
 
             $mail = new PHPMailer(true);
             $mail->isSMTP();
@@ -59,7 +63,14 @@ class EmailService
             $mail->SMTPAuth   = true;
             $mail->Username   = $this->username;
             $mail->Password   = $this->password;
-            $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            $secureMode = strtolower($this->encryption);
+            if ($secureMode === 'ssl') {
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+            } elseif ($secureMode === 'none' || $secureMode === '') {
+                $mail->SMTPSecure = '';
+            } else {
+                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+            }
             $mail->Port       = $this->port;
 
             $mail->setFrom($this->fromEmail, $this->fromName);
@@ -128,6 +139,106 @@ class EmailService
     }
 
     // ── Private helpers ─────────────────────────────────────────────────────
+
+    private function loadMailConfig(): void
+    {
+        $this->host       = (string) $this->readEnvValue('MAIL_HOST', $this->host);
+        $this->port       = (int) $this->readEnvValue('MAIL_PORT', (string) $this->port);
+        $this->encryption = (string) $this->readEnvValue('MAIL_ENCRYPTION', $this->encryption);
+        $this->username   = (string) $this->readEnvValue('MAIL_USERNAME', $this->username);
+        $this->password   = (string) $this->readEnvValue('MAIL_PASSWORD', $this->password);
+        $this->fromEmail  = (string) $this->readEnvValue('MAIL_FROM_ADDRESS', $this->fromEmail);
+        $this->fromName   = (string) $this->readEnvValue('MAIL_FROM_NAME', $this->fromName);
+    }
+
+    private function readEnvValue(string $key, ?string $default = null): ?string
+    {
+        $processValue = getenv($key);
+        if ($processValue !== false && trim((string) $processValue) !== '') {
+            return trim((string) $processValue);
+        }
+
+        $dotEnvValue = $this->getDotEnvValue($key);
+        if ($dotEnvValue !== null && $dotEnvValue !== '') {
+            return $dotEnvValue;
+        }
+
+        return $default;
+    }
+
+    private function getDotEnvValue(string $key): ?string
+    {
+        if (self::$dotEnvCache === null) {
+            self::$dotEnvCache = [];
+
+            $envPaths = [
+                __DIR__ . '/../.env',
+                __DIR__ . '/../../frontend/.env',
+                __DIR__ . '/../../.env',
+            ];
+
+            foreach ($envPaths as $envPath) {
+                if (!is_file($envPath) || !is_readable($envPath)) {
+                    continue;
+                }
+
+                $lines = file($envPath, FILE_IGNORE_NEW_LINES | FILE_SKIP_EMPTY_LINES);
+                if ($lines === false) {
+                    continue;
+                }
+
+                foreach ($lines as $line) {
+                    $line = trim($line);
+                    if ($line === '' || strpos($line, '#') === 0 || strpos($line, '=') === false) {
+                        continue;
+                    }
+
+                    [$rawName, $rawValue] = explode('=', $line, 2);
+                    $name = trim($rawName);
+                    if (strpos($name, 'export ') === 0) {
+                        $name = trim(substr($name, 7));
+                    }
+
+                    if ($name === '' || array_key_exists($name, self::$dotEnvCache)) {
+                        continue;
+                    }
+
+                    $value = trim($rawValue);
+                    if (strlen($value) >= 2) {
+                        $first = $value[0];
+                        $last  = $value[strlen($value) - 1];
+                        if (($first === '"' && $last === '"') || ($first === "'" && $last === "'")) {
+                            $value = substr($value, 1, -1);
+                        }
+                    }
+
+                    self::$dotEnvCache[$name] = $value;
+                }
+            }
+        }
+
+        return self::$dotEnvCache[$key] ?? null;
+    }
+
+    private function assertMailConfig(): void
+    {
+        $missing = [];
+        if ($this->username === '') {
+            $missing[] = 'MAIL_USERNAME';
+        }
+        if ($this->password === '') {
+            $missing[] = 'MAIL_PASSWORD';
+        }
+        if ($this->fromEmail === '') {
+            $missing[] = 'MAIL_FROM_ADDRESS';
+        }
+
+        if (!empty($missing)) {
+            throw new \RuntimeException(
+                'Missing mail configuration: ' . implode(', ', $missing) . '. Set them in backend/.env or frontend/.env.'
+            );
+        }
+    }
 
     private function requirePHPMailer(): void
     {

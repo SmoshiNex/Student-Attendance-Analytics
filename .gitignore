@@ -1,0 +1,21 @@
+# Sensitive environment files
+frontend/.env
+frontend/.env.*
+backend/.env
+backend/.env.*
+
+# Keep examples versioned
+!frontend/.env.example
+!backend/.env.example
+
+# Frontend dependencies and local build caches
+frontend/node_modules/
+frontend/.vite/
+
+# Unrelated workspace snapshot folder
+StarCoreTech-QRattend-QR-BASED-SMART-CAMPUS-ATTENDANCE-AND-REAL-TIME-PARENT-NOTIFICATION-SYSTEM/
+
+# OS/editor noise
+.DS_Store
+Thumbs.db
+*.log
