@@ -90,7 +90,7 @@ export default function TeacherRegister() {
           <div className="flex justify-center mb-6">
             <Link to="/">
               <img
-                src="/images/new-logo.png"
+                src="/images/logo.jpg"
                 alt="Logo"
                 className="w-16 h-16 rounded-full object-cover"
               />

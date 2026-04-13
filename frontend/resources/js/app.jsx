@@ -18,6 +18,7 @@ import StudentMyClasses from "./Pages/Student/MyClasses"
 import StudentAttendanceHistory from "./Pages/Student/AttendanceHistory"
 import StudentNotifications from "./Pages/Student/Notifications"
 import StudentAnalytics from "./Pages/Student/Analytics"
+import StudentChatbot from "./Pages/Student/Chatbot"
 import RegisterClass from "./Pages/Student/RegisterClass"
 import GlobalLoadingBar from "@/Components/ui/GlobalLoadingBar"
 
@@ -64,6 +65,7 @@ function App() {
             element={<StudentNotifications />}
           />
           <Route path="/student/analytics" element={<StudentAnalytics />} />
+          <Route path="/student/chatbot" element={<StudentChatbot />} />
           <Route
             path="/student/register-class/:classId"
             element={<RegisterClass />}

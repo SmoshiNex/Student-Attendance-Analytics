@@ -8,6 +8,7 @@ import {
   LayoutDashboard,
   LogOut,
   Menu,
+  MessageCircle,
   TrendingUp,
   X,
 } from "lucide-react"
@@ -49,6 +50,13 @@ const studentNavLinks = [
     label: "Notifications",
     to: "/student/notifications",
     icon: Bell,
+    group: "communication",
+  },
+  {
+    key: "chatbot",
+    label: "Chatbot",
+    to: "/student/chatbot",
+    icon: MessageCircle,
     group: "communication",
   },
 ]

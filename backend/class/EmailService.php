@@ -181,8 +181,6 @@ class EmailService
             self::$dotEnvCache = [];
 
             $envPaths = [
-                __DIR__ . '/../.env',
-                __DIR__ . '/../../frontend/.env',
                 __DIR__ . '/../../.env',
             ];
 
@@ -244,7 +242,7 @@ class EmailService
 
         if (!empty($missing)) {
             throw new \RuntimeException(
-                'Missing mail configuration: ' . implode(', ', $missing) . '. Set them in backend/.env or frontend/.env.'
+                'Missing mail configuration: ' . implode(', ', $missing) . '. Set them in the project root .env file.'
             );
         }
     }

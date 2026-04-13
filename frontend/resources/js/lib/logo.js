@@ -1,2 +1,2 @@
-import logoUrl from "/images/new-logo.png"
+import logoUrl from "/images/logo.jpg"
 export default logoUrl

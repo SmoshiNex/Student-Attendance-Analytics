@@ -98,7 +98,56 @@ try {
         $stmt = $db->prepare($query);
         $stmt->execute([':student_id' => $studentPkId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $classes = array_map(function ($row) {
+
+        $classmatesByClass = [];
+        $classIds = array_values(array_unique(array_map(function ($row) {
+            return (int)($row['id'] ?? 0);
+        }, is_array($rows) ? $rows : [])));
+
+        if (!empty($classIds)) {
+            $placeholders = implode(', ', array_fill(0, count($classIds), '?'));
+            $classmateQuery = "SELECT cs.teacher_class_id,
+                                      s.student_id,
+                                      s.first_name,
+                                      s.last_name,
+                                      s.course,
+                                      s.year_level,
+                                      s.section
+                               FROM class_student cs
+                               INNER JOIN students s ON s.id = cs.student_id
+                               WHERE cs.teacher_class_id IN (" . $placeholders . ")
+                                 AND cs.student_id <> ?
+                               ORDER BY cs.teacher_class_id ASC, s.last_name ASC, s.first_name ASC";
+
+            $classmateStmt = $db->prepare($classmateQuery);
+            $classmateStmt->execute(array_merge($classIds, [(int)$studentPkId]));
+            $classmateRows = $classmateStmt->fetchAll(PDO::FETCH_ASSOC);
+
+            foreach ($classmateRows as $classmateRow) {
+                $classId = (int)($classmateRow['teacher_class_id'] ?? 0);
+                if ($classId <= 0) {
+                    continue;
+                }
+
+                if (!isset($classmatesByClass[$classId])) {
+                    $classmatesByClass[$classId] = [];
+                }
+
+                $classmatesByClass[$classId][] = [
+                    'student_id' => (string)($classmateRow['student_id'] ?? ''),
+                    'first_name' => (string)($classmateRow['first_name'] ?? ''),
+                    'last_name' => (string)($classmateRow['last_name'] ?? ''),
+                    'course' => (string)($classmateRow['course'] ?? ''),
+                    'year_level' => (string)($classmateRow['year_level'] ?? ''),
+                    'section' => (string)($classmateRow['section'] ?? ''),
+                ];
+            }
+        }
+
+        $classes = array_map(function ($row) use ($classmatesByClass) {
+            $classId = (int)($row['id'] ?? 0);
+            $classmates = $classmatesByClass[$classId] ?? [];
+
             return [
                 'id' => $row['id'],
                 'class_code' => $row['class_code'],
@@ -107,8 +156,10 @@ try {
                 'schedule' => $row['schedule'],
                 'room' => $row['room'],
                 'teacher' => ['first_name' => $row['first_name'], 'last_name' => $row['last_name']],
+                'classmate_count' => count($classmates),
+                'classmates' => $classmates,
             ];
-        }, $rows);
+        }, is_array($rows) ? $rows : []);
         sendJsonResponse('success', 'Classes fetched.', ['classes' => $classes]);
     }
 

@@ -116,6 +116,10 @@ export function teacherClassApiUrl(query = {}) {
   return buildApiUrl("teacher_class_api.php", query)
 }
 
+export function chatbotApiUrl(action, query = {}) {
+  return buildApiUrl("chatbot_api.php", { action, ...query })
+}
+
 export function getStoredStudentId() {
   if (typeof window === "undefined") {
     return ""

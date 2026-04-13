@@ -1,12 +1,10 @@
 # Sensitive environment files
+.env
+.env.*
 frontend/.env
 frontend/.env.*
 backend/.env
 backend/.env.*
-
-# Keep examples versioned
-!frontend/.env.example
-!backend/.env.example
 
 # Frontend dependencies and local build caches
 frontend/node_modules/

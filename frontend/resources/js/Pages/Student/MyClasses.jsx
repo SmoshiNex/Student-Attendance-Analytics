@@ -1,4 +1,4 @@
-import { BookOpen, User, Clock, Calendar } from "lucide-react"
+import { BookOpen, User, Clock, Calendar, Users } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
@@ -99,6 +99,44 @@ export default function StudentMyClasses() {
                         <span>Room: {classItem.room}</span>
                       </div>
                     )}
+
+                    <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
+                      <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
+                        <Users className="w-4 h-4" />
+                        <span>
+                          Classmates ({classItem.classmate_count || 0})
+                        </span>
+                      </div>
+
+                      {Array.isArray(classItem.classmates) &&
+                      classItem.classmates.length > 0 ? (
+                        <>
+                          <ul className="mt-2 space-y-1">
+                            {classItem.classmates
+                              .slice(0, 8)
+                              .map((classmate, index) => (
+                                <li
+                                  key={`${classItem.id}-${classmate.student_id || index}`}
+                                  className="text-sm text-gray-700"
+                                >
+                                  {classmate.first_name} {classmate.last_name}
+                                </li>
+                              ))}
+                          </ul>
+
+                          {classItem.classmates.length > 8 && (
+                            <p className="mt-2 text-xs text-gray-500">
+                              +{classItem.classmates.length - 8} more
+                              classmate(s)
+                            </p>
+                          )}
+                        </>
+                      ) : (
+                        <p className="mt-2 text-sm text-gray-500">
+                          No other classmates listed yet.
+                        </p>
+                      )}
+                    </div>
                   </div>
                 </div>
               </div>

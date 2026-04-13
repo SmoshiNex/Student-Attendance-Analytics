@@ -3,12 +3,14 @@ import { defineConfig, loadEnv } from "vite"
 import react from "@vitejs/plugin-react"
 
 export default defineConfig(({ mode }) => {
-  const env = loadEnv(mode, process.cwd(), "")
+  const rootEnvDir = path.resolve(__dirname, "..")
+  const env = loadEnv(mode, rootEnvDir, "")
   const devPort = Number(env.VITE_DEV_PORT || 5174)
   const isDev = mode === "development"
 
   return {
     plugins: [react()],
+    envDir: rootEnvDir,
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./resources/js"),
