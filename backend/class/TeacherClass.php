@@ -1,4 +1,5 @@
 <?php
+
 class TeacherClass
 {
     private $conn;
@@ -59,6 +60,7 @@ class TeacherClass
 
     private function classBelongsToTeacher($classId, $teacherId)
     {
+        // Check if this class belongs to the given teacher — used before any update or delete to prevent unauthorized access
         $query = "SELECT id FROM {$this->table} WHERE id = :id AND teacher_id = :teacher_id LIMIT 1";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([
@@ -71,6 +73,7 @@ class TeacherClass
 
     public function listByTeacher($teacherId)
     {
+        // Fetch all classes for this teacher with the count of enrolled students per class
         $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.created_at, c.updated_at,
                          COUNT(cs.student_id) AS students_enrolled
                   FROM {$this->table} c
@@ -90,6 +93,7 @@ class TeacherClass
 
     public function readOne($classId, $teacherId)
     {
+        // Fetch a single class with its enrolled student count — verifies teacher ownership via WHERE clause
         $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.created_at, c.updated_at,
                          COUNT(cs.student_id) AS students_enrolled
                   FROM {$this->table} c
@@ -128,6 +132,7 @@ class TeacherClass
             ];
         }
 
+        // Fetch all students enrolled in this class ordered alphabetically by last name
         $query = "SELECT s.id, s.student_id, s.first_name, s.last_name, s.email, s.course, s.year_level, s.section
                   FROM class_student cs
                   INNER JOIN students s ON s.id = cs.student_id
@@ -152,6 +157,7 @@ class TeacherClass
 
         $validData = $validation['data'];
 
+        // Insert a new class record for this teacher
         $query = "INSERT INTO {$this->table} (teacher_id, class_code, class_name, subject_name, schedule, room, created_at, updated_at)
                   VALUES (:teacher_id, :class_code, :class_name, :subject_name, :schedule, :room, NOW(), NOW())";
 
@@ -188,6 +194,7 @@ class TeacherClass
 
         $validData = $validation['data'];
 
+        // Update the class fields — teacher_id in WHERE clause ensures a teacher can only edit their own classes
         $query = "UPDATE {$this->table}
                   SET class_code = :class_code,
                       class_name = :class_name,
@@ -223,6 +230,7 @@ class TeacherClass
             ];
         }
 
+        // Delete the class — teacher_id in WHERE clause ensures a teacher can only delete their own classes
         $query = "DELETE FROM {$this->table} WHERE id = :id AND teacher_id = :teacher_id";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([

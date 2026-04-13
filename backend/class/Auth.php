@@ -1,4 +1,5 @@
 <?php
+
 class Auth
 {
     private $conn;
@@ -20,6 +21,27 @@ class Auth
         unset($_SESSION['auth_role']);
         unset($_SESSION['student_pk_id']);
         unset($_SESSION['teacher_id']);
+    }
+
+    private function validatePasswordPolicy($password)
+    {
+        if (strlen($password) < 8) {
+            return 'Password must be at least 8 characters.';
+        }
+
+        if (!preg_match('/\d/', $password)) {
+            return 'Password must include at least 1 number.';
+        }
+
+        if (!preg_match('/[a-z]/', $password)) {
+            return 'Password must include at least 1 lowercase letter.';
+        }
+
+        if (!preg_match('/[A-Z]/', $password)) {
+            return 'Password must include at least 1 uppercase letter.';
+        }
+
+        return null;
     }
 
     public function studentLogin($studentId, $password)
@@ -145,10 +167,11 @@ class Auth
             ];
         }
 
-        if (strlen($password) < 8) {
+        $passwordPolicyError = $this->validatePasswordPolicy($password);
+        if ($passwordPolicyError !== null) {
             return [
                 'status' => 'error',
-                'message' => 'Password must be at least 8 characters.'
+                'message' => $passwordPolicyError
             ];
         }
 
@@ -218,10 +241,11 @@ class Auth
             ];
         }
 
-        if (strlen($password) < 8) {
+        $passwordPolicyError = $this->validatePasswordPolicy($password);
+        if ($passwordPolicyError !== null) {
             return [
                 'status' => 'error',
-                'message' => 'Password must be at least 8 characters.'
+                'message' => $passwordPolicyError
             ];
         }
 
@@ -282,10 +306,11 @@ class Auth
             ];
         }
 
-        if (strlen($password) < 8) {
+        $passwordPolicyError = $this->validatePasswordPolicy($password);
+        if ($passwordPolicyError !== null) {
             return [
                 'status' => 'error',
-                'message' => 'Password must be at least 8 characters.'
+                'message' => $passwordPolicyError
             ];
         }
 

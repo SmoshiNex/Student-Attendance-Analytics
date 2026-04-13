@@ -1,4 +1,5 @@
 <?php
+
 if (session_status() === PHP_SESSION_NONE) {
     date_default_timezone_set('Asia/Manila');
 
@@ -15,8 +16,6 @@ if (session_status() === PHP_SESSION_NONE) {
 
     session_start();
 
-    // Rewrite Set-Cookie without SameSite so cross-port requests
-    // (Vite :5174 -> Apache :80) send the cookie on HTTP.
     if (!isset($_COOKIE[session_name()])) {
         $name    = session_name();
         $value   = session_id();

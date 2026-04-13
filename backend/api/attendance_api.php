@@ -1,4 +1,5 @@
 <?php
+
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
@@ -107,7 +108,7 @@ try {
         sendJsonResponse($result['status'], $result['message'], [
             'attendance_record_id' => $result['attendance_record_id'] ?? null,
             'already_marked'       => $result['already_marked'] ?? null,
-            'notifications_created'=> $result['notifications_created'] ?? 0,
+            'notifications_created' => $result['notifications_created'] ?? 0,
             'student'              => $result['student'] ?? null,
             'class'                => $result['class'] ?? null,
             'record'               => $result['record'] ?? null,
@@ -148,6 +149,21 @@ try {
         $historyStmt = $db->prepare($historyQuery);
         $historyStmt->execute([':student_id' => $studentPkId]);
         sendJsonResponse('success', 'History fetched.', ['records' => $historyStmt->fetchAll(PDO::FETCH_ASSOC)]);
+    }
+
+    if ($action === 'student_analytics') {
+        if ($method !== 'GET') {
+            sendJsonResponse('error', 'Method not supported.', null, 405);
+        }
+
+        if (!$auth->isStudentLoggedIn()) {
+            sendJsonResponse('error', 'Unauthorized', null, 401);
+        }
+
+        $studentPkId = $auth->getStudentSessionId();
+        $result = $attendance->getStudentAnalytics($studentPkId);
+        $code = ($result['status'] === 'success') ? 200 : 422;
+        sendJsonResponse($result['status'], $result['status'] === 'success' ? 'Analytics fetched.' : $result['message'], $result['data'] ?? null, $code);
     }
 
     if (!$auth->isTeacherLoggedIn()) {
@@ -296,6 +312,21 @@ try {
 
             $classes = $attendance->getClassesWithTodayStats($teacherId);
             sendJsonResponse('success', 'Dashboard data fetched.', $classes);
+            break;
+
+        case 'teacher_analytics':
+            if ($method !== 'GET') {
+                sendJsonResponse('error', 'Method not supported.', null, 405);
+            }
+
+            $classId = isset($_GET['class_id']) ? (int)$_GET['class_id'] : 0;
+            if ($classId <= 0) {
+                sendJsonResponse('error', 'class_id is required.', null, 422);
+            }
+
+            $result = $attendance->getTeacherAnalytics($teacherId, $classId);
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['status'] === 'success' ? 'Analytics fetched.' : $result['message'], $result['data'] ?? null, $code);
             break;
 
         case 'reports':

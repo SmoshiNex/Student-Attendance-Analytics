@@ -1,4 +1,5 @@
 <?php
+
 class Notification
 {
     private $conn;
@@ -43,6 +44,7 @@ class Notification
             $whereSql = ' WHERE ' . implode(' AND ', $where);
         }
 
+        // Fetch notifications filtered by user_type, user_id, status, type, or unread flag — all filters are optional and combined with AND
         $query = "SELECT id, user_type, user_id, type, title, message, metadata, status, read_at, created_at, updated_at
                   FROM {$this->table}
                   {$whereSql}
@@ -107,6 +109,7 @@ class Notification
             }
         }
 
+        // Insert a new notification record for a teacher or student
         $query = "INSERT INTO {$this->table}
                     (user_type, user_id, type, title, message, metadata, status, read_at, created_at, updated_at)
                   VALUES
@@ -143,6 +146,7 @@ class Notification
             ];
         }
 
+        // Update the status field of a notification by its ID
         $query = "UPDATE {$this->table}
                   SET status = :status, updated_at = NOW()
                   WHERE id = :id";
@@ -185,6 +189,7 @@ class Notification
             $params[':user_id'] = (int)$userId;
         }
 
+        // Mark a single notification as read — user_type and user_id are checked to ensure ownership
         $query = "UPDATE {$this->table}
                   SET read_at = NOW(), updated_at = NOW()
                   WHERE id = :id {$whereUser}";
@@ -217,6 +222,7 @@ class Notification
             ];
         }
 
+        // Mark all unread notifications as read for this specific user
         $query = "UPDATE {$this->table}
                   SET read_at = NOW(), updated_at = NOW()
                   WHERE user_type = :user_type AND user_id = :user_id AND read_at IS NULL";
@@ -244,6 +250,7 @@ class Notification
             ];
         }
 
+        // Delete a single notification by its ID
         $query = "DELETE FROM {$this->table} WHERE id = :id";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([':id' => $notificationId]);

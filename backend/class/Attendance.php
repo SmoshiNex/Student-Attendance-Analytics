@@ -1,4 +1,5 @@
 <?php
+
 class Attendance
 {
     private $conn;
@@ -41,6 +42,7 @@ class Attendance
 
     private function getOwnedClass($teacherId, $classId)
     {
+        // Fetch a single class that belongs to the given teacher — used to verify ownership before any session action
         $query = "SELECT id, teacher_id, class_code, class_name, subject_name, schedule, room
                   FROM {$this->classTable}
                   WHERE id = :class_id AND teacher_id = :teacher_id
@@ -56,6 +58,7 @@ class Attendance
 
     private function getSessionForTeacher($sessionId, $teacherId)
     {
+        // Fetch a session with its class info, only if the class belongs to the given teacher — prevents teachers from accessing other teachers' sessions
         $query = "SELECT s.id, s.teacher_class_id, s.duration_minutes,
                          DATE_FORMAT(s.started_at, '%Y-%m-%dT%H:%i:%s') AS started_at,
                          DATE_FORMAT(s.ends_at, '%Y-%m-%dT%H:%i:%s') AS ends_at,
@@ -78,6 +81,7 @@ class Attendance
 
     private function getSessionById($sessionId)
     {
+        // Fetch a session with its class info by session ID only — used during QR scan where teacher ownership is not required
         $query = "SELECT s.id, s.teacher_class_id, s.duration_minutes,
                          DATE_FORMAT(s.started_at, '%Y-%m-%dT%H:%i:%s') AS started_at,
                          DATE_FORMAT(s.ends_at, '%Y-%m-%dT%H:%i:%s') AS ends_at,
@@ -121,6 +125,7 @@ class Attendance
 
     private function getStudentByExternalId($studentId)
     {
+        // Look up a student by their school-issued student ID string (not the database primary key)
         $query = "SELECT id, student_id, first_name, last_name, parent_email
                   FROM {$this->studentTable}
                   WHERE student_id = :student_id
@@ -134,6 +139,7 @@ class Attendance
 
     private function isStudentEnrolled($classId, $studentPkId)
     {
+        // Check if a student is already enrolled in a class by looking for their record in the class_student pivot table
         $query = "SELECT id
                   FROM {$this->classStudentTable}
                   WHERE teacher_class_id = :class_id AND student_id = :student_id
@@ -172,6 +178,7 @@ class Attendance
 
     private function getRecordBySessionAndStudent($sessionId, $studentPkId)
     {
+        // Check if an attendance record already exists for this student in this session — used to prevent duplicate check-ins
         $query = "SELECT id, status, checked_in_at
                   FROM {$this->recordTable}
                   WHERE attendance_session_id = :session_id AND student_id = :student_id
@@ -204,6 +211,7 @@ class Attendance
             $metadataJson = json_encode($metadata, JSON_UNESCAPED_SLASHES);
         }
 
+        // Insert a new notification log entry for either a teacher or student
         $query = "INSERT INTO {$this->notificationLogTable}
                     (user_type, user_id, type, title, message, metadata, status, read_at, created_at, updated_at)
                   VALUES
@@ -229,6 +237,8 @@ class Attendance
     private function createAttendanceNotifications($sessionData, $student, $status, $checkedInAt = null)
     {
         $className = $this->getClassName($sessionData);
+        $subjectName = trim((string)($sessionData['subject_name'] ?? ''));
+        $schedule = trim((string)($sessionData['schedule'] ?? ''));
         $studentName = trim((string)($student['first_name'] ?? '')) . ' ' . trim((string)($student['last_name'] ?? ''));
         $studentName = trim($studentName);
         $teacherId = (int)($sessionData['teacher_id'] ?? 0);
@@ -236,6 +246,8 @@ class Attendance
 
         $metadata = [
             'class_name'    => $className,
+            'subject_name'  => $subjectName !== '' ? $subjectName : null,
+            'schedule'      => $schedule !== '' ? $schedule : null,
             'status'        => $statusText,
             'checked_in_at' => $checkedInAt,
             'student_name'  => $studentName,
@@ -300,6 +312,7 @@ class Attendance
 
     private function markAbsentForUnmarkedStudents($sessionData)
     {
+        // Find all enrolled students who have no attendance record for this session — these are the ones to mark absent
         $query = "SELECT s.id, s.student_id, s.first_name, s.last_name, s.parent_email
                   FROM {$this->classStudentTable} cs
                   INNER JOIN {$this->studentTable} s ON s.id = cs.student_id
@@ -320,6 +333,7 @@ class Attendance
             return 0;
         }
 
+        // Insert an absent record for each student who did not check in before the session was closed
         $insertQuery = "INSERT INTO {$this->recordTable}
                         (attendance_session_id, student_id, checked_in_at, status, created_at, updated_at)
                         VALUES
@@ -366,6 +380,7 @@ class Attendance
             ];
         }
 
+        // End any currently active session for this class before starting a new one — a class can only have one active session at a time
         $endActiveQuery = "UPDATE {$this->sessionTable}
                            SET status = 'ended', ended_at = NOW(), updated_at = NOW()
                            WHERE teacher_class_id = :class_id AND status = 'active'";
@@ -376,6 +391,7 @@ class Attendance
         $endsAt = date('Y-m-d\TH:i:s', strtotime('+3 hours'));
         $serverTime = date('Y-m-d\TH:i:s');
 
+        // Insert the new attendance session as active with the calculated start and end times
         $query = "INSERT INTO {$this->sessionTable}
                     (teacher_class_id, duration_minutes, started_at, ends_at, ended_at, status, created_at, updated_at)
                   VALUES
@@ -418,6 +434,7 @@ class Attendance
             $params[':class_id'] = (int)$classId;
         }
 
+        // Fetch all sessions for this teacher with attendance counts per status — optionally filtered by a specific class
         $query = "SELECT s.id, s.teacher_class_id, s.duration_minutes, s.started_at, s.ends_at, s.ended_at, s.status,
                          s.created_at, s.updated_at,
                          c.teacher_id, c.class_code, c.class_name, c.subject_name,
@@ -454,6 +471,7 @@ class Attendance
         }
 
         // Return ALL enrolled students with their attendance status
+        // LEFT JOIN means students with no record yet still appear — their status shows as null until marked
         $query = "SELECT
                     s.id,
                     s.student_id,
@@ -483,7 +501,7 @@ class Attendance
 
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        $records = array_map(function($row) {
+        $records = array_map(function ($row) {
             return [
                 'id'            => (int)$row['id'],
                 'student_id'    => $row['student_id'],
@@ -492,7 +510,7 @@ class Attendance
                 'last_name'     => $row['last_name'],
                 'checked_in_at' => $row['checked_in_at'],
                 'status'        => $row['status'] ?? 'absent',
-                'has_checked_in'=> (bool)$row['has_checked_in'],
+                'has_checked_in' => (bool)$row['has_checked_in'],
             ];
         }, $rows);
 
@@ -513,6 +531,7 @@ class Attendance
             ];
         }
 
+        // Count total students enrolled in this class
         $enrolledQuery = "SELECT COUNT(*) AS total_enrolled
                           FROM {$this->classStudentTable}
                           WHERE teacher_class_id = :class_id";
@@ -520,6 +539,7 @@ class Attendance
         $enrolledStmt->execute([':class_id' => (int)$session['teacher_class_id']]);
         $totalEnrolled = (int)$enrolledStmt->fetch(PDO::FETCH_ASSOC)['total_enrolled'];
 
+        // Count present, late, and absent records for this session
         $statusQuery = "SELECT
                             SUM(CASE WHEN status = 'present' THEN 1 ELSE 0 END) AS present_count,
                             SUM(CASE WHEN status = 'late' THEN 1 ELSE 0 END) AS late_count,
@@ -576,6 +596,7 @@ class Attendance
 
         $whereSql = 'WHERE ' . implode(' AND ', $where);
 
+        // Fetch all attendance records across all sessions for this teacher's classes joined with student and class info — supports optional class and date filters
         $query = "SELECT ar.id, ar.status, ar.checked_in_at, ar.created_at,
                          s.id AS student_pk_id, s.student_id, s.first_name, s.last_name,
                          c.id AS class_id, c.class_code, c.class_name, c.subject_name
@@ -636,6 +657,7 @@ class Attendance
             ];
         }
 
+        // Fetch all classes belonging to this teacher for the filter dropdown in the reports page
         $classesQuery = "SELECT id, class_code, class_name, subject_name, schedule, room
                          FROM {$this->classTable}
                          WHERE teacher_id = :teacher_id
@@ -650,11 +672,307 @@ class Attendance
         ];
     }
 
+    public function getTeacherAnalytics($teacherId, $classId)
+    {
+        // Verify class belongs to teacher
+        $ownedClass = $this->getOwnedClass($teacherId, $classId);
+        if (!$ownedClass) {
+            return ['status' => 'error', 'message' => 'Unauthorized or class not found.'];
+        }
+
+        // CTE (session_stats): aggregate present/late/absent counts per ended session, then compute overall avg/max/min attendance rate across all sessions for this class
+        $overviewQuery = "
+            WITH session_stats AS (
+                SELECT
+                    s.id AS session_id,
+                    s.started_at,
+                    COUNT(cs.student_id)                                          AS total_enrolled,
+                    SUM(CASE WHEN ar.status IN ('present','late') THEN 1 ELSE 0 END) AS attended,
+                    SUM(CASE WHEN ar.status = 'present'           THEN 1 ELSE 0 END) AS present_count,
+                    SUM(CASE WHEN ar.status = 'late'              THEN 1 ELSE 0 END) AS late_count,
+                    SUM(CASE WHEN ar.status = 'absent'            THEN 1 ELSE 0 END) AS absent_count
+                FROM {$this->sessionTable} s
+                INNER JOIN {$this->classStudentTable} cs ON cs.teacher_class_id = s.teacher_class_id
+                LEFT JOIN {$this->recordTable} ar
+                    ON ar.attendance_session_id = s.id AND ar.student_id = cs.student_id
+                WHERE s.teacher_class_id = :class_id AND s.status = 'ended'
+                GROUP BY s.id, s.started_at
+            )
+            SELECT
+                COUNT(*)                                                        AS total_sessions,
+                COALESCE(AVG(CASE WHEN total_enrolled > 0
+                    THEN (attended / total_enrolled) * 100 ELSE 0 END), 0)     AS avg_attendance_rate,
+                COALESCE(MAX(CASE WHEN total_enrolled > 0
+                    THEN (attended / total_enrolled) * 100 ELSE 0 END), 0)     AS best_session_rate,
+                COALESCE(MIN(CASE WHEN total_enrolled > 0
+                    THEN (attended / total_enrolled) * 100 ELSE 0 END), 0)     AS worst_session_rate,
+                COALESCE(SUM(present_count), 0)                                AS total_present,
+                COALESCE(SUM(late_count), 0)                                   AS total_late,
+                COALESCE(SUM(absent_count), 0)                                 AS total_absent
+            FROM session_stats
+        ";
+        $overviewStmt = $this->conn->prepare($overviewQuery);
+        $overviewStmt->execute([':class_id' => $classId]);
+        $overview = $overviewStmt->fetch(PDO::FETCH_ASSOC);
+
+        // Count the total number of students currently enrolled in this class
+        $enrolledStmt = $this->conn->prepare(
+            "SELECT COUNT(*) AS cnt FROM {$this->classStudentTable} WHERE teacher_class_id = :class_id"
+        );
+        $enrolledStmt->execute([':class_id' => $classId]);
+        $totalEnrolled = (int)$enrolledStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
+
+        // Fetch each ended session with its present/late/absent counts and attendance rate — used to build the session-by-session trend table
+        $trendQuery = "
+            SELECT
+                s.id AS session_id,
+                DATE_FORMAT(s.started_at, '%b %d') AS label,
+                s.started_at,
+                SUM(CASE WHEN ar.status IN ('present','late') THEN 1 ELSE 0 END) AS attended,
+                SUM(CASE WHEN ar.status = 'present'           THEN 1 ELSE 0 END) AS present_count,
+                SUM(CASE WHEN ar.status = 'late'              THEN 1 ELSE 0 END) AS late_count,
+                SUM(CASE WHEN ar.status = 'absent'            THEN 1 ELSE 0 END) AS absent_count,
+                COUNT(cs.student_id) AS total_enrolled
+            FROM {$this->sessionTable} s
+            INNER JOIN {$this->classStudentTable} cs ON cs.teacher_class_id = s.teacher_class_id
+            LEFT JOIN {$this->recordTable} ar
+                ON ar.attendance_session_id = s.id AND ar.student_id = cs.student_id
+            WHERE s.teacher_class_id = :class_id AND s.status = 'ended'
+            GROUP BY s.id, s.started_at
+            ORDER BY s.started_at ASC
+        ";
+        $trendStmt = $this->conn->prepare($trendQuery);
+        $trendStmt->execute([':class_id' => $classId]);
+        $trendRows = $trendStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $trend = array_map(function ($row) {
+            $enrolled = (int)$row['total_enrolled'];
+            $rate = $enrolled > 0 ? round(((int)$row['attended'] / $enrolled) * 100, 1) : 0;
+            return [
+                'session_id'    => (int)$row['session_id'],
+                'label'         => $row['label'],
+                'present'       => (int)$row['present_count'],
+                'late'          => (int)$row['late_count'],
+                'absent'        => (int)$row['absent_count'],
+                'attendance_rate' => $rate,
+            ];
+        }, $trendRows);
+
+        // For each enrolled student, count how many times they were present, late, and absent across all ended sessions in this class using correlated subqueries
+        $studentQuery = "
+            SELECT
+                s.id,
+                s.student_id,
+                CONCAT(s.first_name, ' ', s.last_name) AS student_name,
+                s.course, s.year_level, s.section,
+                (
+                    SELECT COUNT(*) FROM {$this->recordTable} ar2
+                    INNER JOIN {$this->sessionTable} sess2 ON sess2.id = ar2.attendance_session_id
+                    WHERE ar2.student_id = s.id
+                      AND sess2.teacher_class_id = :class_id
+                      AND sess2.status = 'ended'
+                      AND ar2.status = 'present'
+                ) AS present_count,
+                (
+                    SELECT COUNT(*) FROM {$this->recordTable} ar2
+                    INNER JOIN {$this->sessionTable} sess2 ON sess2.id = ar2.attendance_session_id
+                    WHERE ar2.student_id = s.id
+                      AND sess2.teacher_class_id = :class_id2
+                      AND sess2.status = 'ended'
+                      AND ar2.status = 'late'
+                ) AS late_count,
+                (
+                    SELECT COUNT(*) FROM {$this->recordTable} ar2
+                    INNER JOIN {$this->sessionTable} sess2 ON sess2.id = ar2.attendance_session_id
+                    WHERE ar2.student_id = s.id
+                      AND sess2.teacher_class_id = :class_id3
+                      AND sess2.status = 'ended'
+                      AND ar2.status = 'absent'
+                ) AS absent_count
+            FROM {$this->classStudentTable} cs
+            INNER JOIN {$this->studentTable} s ON s.id = cs.student_id
+            WHERE cs.teacher_class_id = :class_id4
+            ORDER BY s.last_name ASC, s.first_name ASC
+        ";
+        $studentStmt = $this->conn->prepare($studentQuery);
+        $studentStmt->execute([
+            ':class_id'  => $classId,
+            ':class_id2' => $classId,
+            ':class_id3' => $classId,
+            ':class_id4' => $classId,
+        ]);
+        $studentRows = $studentStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $totalSessions = (int)($overview['total_sessions'] ?? 0);
+        $students = array_map(function ($row) use ($totalSessions) {
+            $present = (int)$row['present_count'];
+            $late    = (int)$row['late_count'];
+            $absent  = (int)$row['absent_count'];
+            $rate    = $totalSessions > 0 ? round((($present + $late) / $totalSessions) * 100, 1) : 0;
+            return [
+                'id'              => (int)$row['id'],
+                'student_id'      => $row['student_id'],
+                'student_name'    => $row['student_name'],
+                'course'          => $row['course'],
+                'year_level'      => $row['year_level'],
+                'section'         => $row['section'],
+                'present'         => $present,
+                'late'            => $late,
+                'absent'          => $absent,
+                'attendance_rate' => $rate,
+                'at_risk'         => $rate < 75,
+            ];
+        }, $studentRows);
+
+        return [
+            'status' => 'success',
+            'data' => [
+                'class'    => [
+                    'id'           => (int)$ownedClass['id'],
+                    'class_code'   => $ownedClass['class_code'],
+                    'class_name'   => $ownedClass['class_name'],
+                    'subject_name' => $ownedClass['subject_name'],
+                ],
+                'overview' => [
+                    'total_sessions'      => $totalSessions,
+                    'total_enrolled'      => $totalEnrolled,
+                    'avg_attendance_rate' => round((float)($overview['avg_attendance_rate'] ?? 0), 1),
+                    'best_session_rate'   => round((float)($overview['best_session_rate'] ?? 0), 1),
+                    'worst_session_rate'  => round((float)($overview['worst_session_rate'] ?? 0), 1),
+                    'total_present'       => (int)($overview['total_present'] ?? 0),
+                    'total_late'          => (int)($overview['total_late'] ?? 0),
+                    'total_absent'        => (int)($overview['total_absent'] ?? 0),
+                ],
+                'trend'    => $trend,
+                'students' => $students,
+            ],
+        ];
+    }
+
+    public function getStudentAnalytics($studentPkId)
+    {
+        // CTE (class_totals): for each class the student is enrolled in, compute total sessions, present/late/absent counts, and attendance rate — then flag at-risk if rate is below 75%
+        $classStatsQuery = "
+            WITH class_totals AS (
+                SELECT
+                    c.id AS class_id,
+                    c.class_code,
+                    c.class_name,
+                    c.subject_name,
+                    CONCAT(t.first_name, ' ', t.last_name) AS teacher_name,
+                    COUNT(DISTINCT s.id)                                              AS total_sessions,
+                    SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END)           AS present_count,
+                    SUM(CASE WHEN ar.status = 'late'    THEN 1 ELSE 0 END)           AS late_count,
+                    SUM(CASE WHEN ar.status = 'absent'  THEN 1 ELSE 0 END)           AS absent_count,
+                    AVG(CASE WHEN ar.status IN ('present','late') THEN 1.0 ELSE 0 END) * 100 AS attendance_rate
+                FROM {$this->classStudentTable} cs
+                INNER JOIN {$this->classTable} c  ON c.id  = cs.teacher_class_id
+                INNER JOIN teachers t              ON t.id  = c.teacher_id
+                INNER JOIN {$this->sessionTable} s ON s.teacher_class_id = c.id AND s.status = 'ended'
+                LEFT JOIN {$this->recordTable} ar
+                    ON ar.attendance_session_id = s.id AND ar.student_id = cs.student_id
+                WHERE cs.student_id = :student_id
+                GROUP BY c.id, c.class_code, c.class_name, c.subject_name, t.first_name, t.last_name
+            )
+            SELECT *,
+                CASE WHEN attendance_rate < 75 THEN 1 ELSE 0 END AS at_risk
+            FROM class_totals
+            ORDER BY attendance_rate ASC
+        ";
+        $classStmt = $this->conn->prepare($classStatsQuery);
+        $classStmt->execute([':student_id' => $studentPkId]);
+        $classRows = $classStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Aggregate the student's overall attendance stats across all classes — includes a subquery to count total distinct classes enrolled
+        $summaryQuery = "
+            SELECT
+                COUNT(DISTINCT ar.attendance_session_id)                          AS total_sessions_attended,
+                SUM(CASE WHEN ar.status = 'present' THEN 1 ELSE 0 END)           AS total_present,
+                SUM(CASE WHEN ar.status = 'late'    THEN 1 ELSE 0 END)           AS total_late,
+                SUM(CASE WHEN ar.status = 'absent'  THEN 1 ELSE 0 END)           AS total_absent,
+                AVG(CASE WHEN ar.status IN ('present','late') THEN 1.0 ELSE 0 END) * 100 AS overall_rate,
+                (
+                    SELECT COUNT(DISTINCT cs2.teacher_class_id)
+                    FROM {$this->classStudentTable} cs2
+                    WHERE cs2.student_id = :student_id2
+                ) AS total_classes
+            FROM {$this->recordTable} ar
+            INNER JOIN {$this->sessionTable} s ON s.id = ar.attendance_session_id AND s.status = 'ended'
+            INNER JOIN {$this->classStudentTable} cs ON cs.teacher_class_id = s.teacher_class_id AND cs.student_id = ar.student_id
+            WHERE ar.student_id = :student_id
+        ";
+        $summaryStmt = $this->conn->prepare($summaryQuery);
+        $summaryStmt->execute([':student_id' => $studentPkId, ':student_id2' => $studentPkId]);
+        $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
+
+        // Group the student's attendance records by month to show how many sessions they attended vs missed each month
+        $monthlyQuery = "
+            SELECT
+                DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%b %Y') AS month_label,
+                DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%Y-%m') AS month_sort,
+                COUNT(*)                                                          AS total_records,
+                SUM(CASE WHEN ar.status IN ('present','late') THEN 1 ELSE 0 END) AS attended,
+                SUM(CASE WHEN ar.status = 'absent'            THEN 1 ELSE 0 END) AS absent
+            FROM {$this->recordTable} ar
+            INNER JOIN {$this->sessionTable} s ON s.id = ar.attendance_session_id AND s.status = 'ended'
+            WHERE ar.student_id = :student_id
+            GROUP BY month_label, month_sort
+            ORDER BY month_sort ASC
+        ";
+        $monthlyStmt = $this->conn->prepare($monthlyQuery);
+        $monthlyStmt->execute([':student_id' => $studentPkId]);
+        $monthlyRows = $monthlyStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $classes = array_map(function ($row) {
+            $className = trim((string)($row['class_name'] ?? ''));
+            if ($className === '') {
+                $className = trim((string)($row['class_code'] ?? '')) ?: trim((string)($row['subject_name'] ?? '')) ?: 'Unknown';
+            }
+            return [
+                'class_id'        => (int)$row['class_id'],
+                'class_code'      => $row['class_code'],
+                'class_name'      => $className,
+                'subject_name'    => $row['subject_name'],
+                'teacher_name'    => $row['teacher_name'],
+                'total_sessions'  => (int)$row['total_sessions'],
+                'present'         => (int)$row['present_count'],
+                'late'            => (int)$row['late_count'],
+                'absent'          => (int)$row['absent_count'],
+                'attendance_rate' => round((float)($row['attendance_rate'] ?? 0), 1),
+                'at_risk'         => (bool)$row['at_risk'],
+            ];
+        }, $classRows);
+
+        $monthly = array_map(function ($row) {
+            return [
+                'label'   => $row['month_label'],
+                'attended' => (int)$row['attended'],
+                'absent'  => (int)$row['absent'],
+            ];
+        }, $monthlyRows);
+
+        return [
+            'status' => 'success',
+            'data' => [
+                'summary' => [
+                    'total_classes'           => (int)($summary['total_classes'] ?? 0),
+                    'total_sessions_attended' => (int)($summary['total_sessions_attended'] ?? 0),
+                    'total_present'           => (int)($summary['total_present'] ?? 0),
+                    'total_late'              => (int)($summary['total_late'] ?? 0),
+                    'total_absent'            => (int)($summary['total_absent'] ?? 0),
+                    'overall_rate'            => round((float)($summary['overall_rate'] ?? 0), 1),
+                ],
+                'classes' => $classes,
+                'monthly' => $monthly,
+            ],
+        ];
+    }
+
     public function getClassesWithTodayStats($teacherId)
     {
         $today = date('Y-m-d');
 
-        // Get all classes for this teacher
+        // Fetch all classes for this teacher to build the dashboard class list
         $classQuery = "SELECT id, class_code, class_name, subject_name, schedule, room
                        FROM {$this->classTable}
                        WHERE teacher_id = :teacher_id
@@ -672,7 +990,7 @@ class Attendance
         foreach ($classes as $class) {
             $classId = (int)$class['id'];
 
-            // Count enrolled students
+            // Count how many students are enrolled in this class
             $enrolledStmt = $this->conn->prepare(
                 "SELECT COUNT(*) AS cnt FROM {$this->classStudentTable} WHERE teacher_class_id = :cid"
             );
@@ -680,7 +998,7 @@ class Attendance
             $enrolled = (int)$enrolledStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
             $totalStudents += $enrolled;
 
-            // Get today's session
+            // Get the most recent session started today for this class, if any
             $sessionStmt = $this->conn->prepare(
                 "SELECT id, duration_minutes, started_at, status
                  FROM {$this->sessionTable}
@@ -703,6 +1021,7 @@ class Attendance
                 $timeDisplay = date('g:i A', strtotime($session['started_at'])) . ' - ' . $endTime;
                 $status = $session['status'];
 
+                // Count present/late and absent records for this session to display live stats on the dashboard
                 $countsStmt = $this->conn->prepare(
                     "SELECT
                         SUM(CASE WHEN status IN ('present','late') THEN 1 ELSE 0 END) AS present_count,
@@ -758,6 +1077,7 @@ class Attendance
         }
 
         if ((string)$session['status'] === 'active') {
+            // Mark the session as ended if it is still active
             $query = "UPDATE {$this->sessionTable}
                       SET status = 'ended', ended_at = NOW(), updated_at = NOW()
                       WHERE id = :id";
@@ -800,6 +1120,7 @@ class Attendance
         $student = null;
         if (isset($data['student_pk_id']) && (int)$data['student_pk_id'] > 0) {
             $studentPkId = (int)$data['student_pk_id'];
+            // Fetch the student by their database primary key for manual marking
             $query = "SELECT id, student_id, first_name, last_name, parent_email
                       FROM {$this->studentTable}
                       WHERE id = :id
@@ -832,6 +1153,7 @@ class Attendance
         $existingRecord = $this->getRecordBySessionAndStudent($sessionId, $studentPkId);
 
         if ($existingRecord) {
+            // Update the existing attendance record with the new status and check-in time
             $updateQuery = "UPDATE {$this->recordTable}
                             SET status = :status, checked_in_at = :checked_in_at, updated_at = NOW()
                             WHERE id = :id";
@@ -843,6 +1165,7 @@ class Attendance
             ]);
             $recordId = (int)$existingRecord['id'];
         } else {
+            // Insert a new attendance record since none exists yet for this student in this session
             $insertQuery = "INSERT INTO {$this->recordTable}
                             (attendance_session_id, student_id, checked_in_at, status, created_at, updated_at)
                             VALUES
@@ -951,6 +1274,7 @@ class Attendance
             }
         }
 
+        // Insert the new attendance record for the student who just scanned the QR code
         $insertQuery = "INSERT INTO {$this->recordTable}
                         (attendance_session_id, student_id, checked_in_at, status, created_at, updated_at)
                         VALUES
@@ -971,7 +1295,7 @@ class Attendance
             'message'              => $status === 'present' ? 'You are marked PRESENT.' : 'You checked in after the allowed time.',
             'attendance_record_id' => $recordId,
             'already_marked'       => false,
-            'notifications_created'=> $notificationCount,
+            'notifications_created' => $notificationCount,
             'student'              => $student,
             'class' => [
                 'class_code'   => $session['class_code'] ?? null,

@@ -1,4 +1,5 @@
 <?php
+
 /**
  * EmailService — sends parent attendance notifications via Brevo SMTP.
  * Mirrors the Laravel EmailService + AttendanceNotificationMail logic.
@@ -92,7 +93,9 @@ class EmailService
 
             // Log success for student
             $this->logNotification(
-                'student', $studentId, 'email_sent',
+                'student',
+                $studentId,
+                'email_sent',
                 'Email Sent to Parent',
                 "Email notification sent to {$parentEmail} regarding {$studentName}'s attendance.",
                 ['parent_email' => $parentEmail, 'student_name' => $studentName, 'status' => $status, 'class_name' => $className, 'check_in_time' => $checkInTime],
@@ -102,7 +105,9 @@ class EmailService
             // Log success for teacher
             if ($teacherId) {
                 $this->logNotification(
-                    'teacher', $teacherId, 'email_sent',
+                    'teacher',
+                    $teacherId,
+                    'email_sent',
                     'Email Sent to Parent',
                     "Email notification sent to {$parentEmail} for student {$studentName}.",
                     ['parent_email' => $parentEmail, 'student_name' => $studentName, 'status' => $status, 'class_name' => $className],
@@ -117,7 +122,9 @@ class EmailService
 
             // Log failure for student
             $this->logNotification(
-                'student', $studentId, 'email_failed',
+                'student',
+                $studentId,
+                'email_failed',
                 'Email Notification Failed',
                 "Error sending email to {$parentEmail}: " . $e->getMessage(),
                 ['parent_email' => $parentEmail, 'student_name' => $studentName, 'status' => $status, 'class_name' => $className, 'error' => $e->getMessage()],
@@ -126,7 +133,9 @@ class EmailService
 
             if ($teacherId) {
                 $this->logNotification(
-                    'teacher', $teacherId, 'email_failed',
+                    'teacher',
+                    $teacherId,
+                    'email_failed',
                     'Email Notification Failed',
                     "Error sending email to {$parentEmail} for student {$studentName}: " . $e->getMessage(),
                     ['parent_email' => $parentEmail, 'student_name' => $studentName, 'status' => $status, 'class_name' => $className, 'error' => $e->getMessage()],
@@ -297,7 +306,7 @@ class EmailService
     ): string {
         $statusLabels = ['present' => 'is present', 'late' => 'arrived late', 'absent' => 'is absent'];
         $statusLabel  = $statusLabels[$status] ?? 'has checked in';
-        $statusUpper  = strtoupper($status);
+        $statusUpper  = htmlspecialchars(strtoupper($status), ENT_QUOTES, 'UTF-8');
 
         $statusColors = [
             'present' => ['bg' => '#B9F8CF', 'color' => '#064e3b'],

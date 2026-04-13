@@ -57,3 +57,23 @@
     @apply bg-background text-foreground;
   }
 }
+
+@media (min-width: 768px) {
+  .teacher-shell {
+    padding-left: 16rem;
+    transition: padding-left 0.2s ease;
+  }
+
+  .student-shell {
+    padding-left: 16rem;
+    transition: padding-left 0.2s ease;
+  }
+
+  html.teacher-sidebar-collapsed .teacher-shell {
+    padding-left: 5rem;
+  }
+
+  html.student-sidebar-collapsed .student-shell {
+    padding-left: 5rem;
+  }
+}

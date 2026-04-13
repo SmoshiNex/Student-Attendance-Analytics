@@ -1,4 +1,5 @@
 <?php
+
 ini_set('display_errors', 0);
 error_reporting(E_ALL);
 
@@ -97,7 +98,7 @@ try {
         $stmt = $db->prepare($query);
         $stmt->execute([':student_id' => $studentPkId]);
         $rows = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        $classes = array_map(function($row) {
+        $classes = array_map(function ($row) {
             return [
                 'id' => $row['id'],
                 'class_code' => $row['class_code'],
@@ -176,19 +177,47 @@ try {
         $passwordConf = (string)($payload['password_confirmation'] ?? '');
 
         $fieldErrors = [];
-        if ($studentId === '')   $fieldErrors['student_id']   = 'Student ID is required.';
-        if ($firstName === '')   $fieldErrors['first_name']   = 'First name is required.';
-        if ($lastName === '')    $fieldErrors['last_name']    = 'Last name is required.';
-        if ($email === '')       $fieldErrors['email']        = 'Email is required.';
-        elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) $fieldErrors['email'] = 'Invalid email format.';
-        if ($course === '')      $fieldErrors['course']       = 'Course is required.';
-        if ($yearLevel === '')   $fieldErrors['year_level']   = 'Year level is required.';
-        if ($section === '')     $fieldErrors['section']      = 'Section is required.';
-        if ($parentEmail === '') $fieldErrors['parent_email'] = 'Parent email is required.';
-        elseif (!filter_var($parentEmail, FILTER_VALIDATE_EMAIL)) $fieldErrors['parent_email'] = 'Invalid parent email format.';
-        if ($password === '')    $fieldErrors['password']     = 'Password is required.';
-        elseif (strlen($password) < 8) $fieldErrors['password'] = 'Password must be at least 8 characters.';
-        elseif ($password !== $passwordConf) $fieldErrors['password_confirmation'] = 'Passwords do not match.';
+        if ($studentId === '') {
+            $fieldErrors['student_id']   = 'Student ID is required.';
+        }
+        if ($firstName === '') {
+            $fieldErrors['first_name']   = 'First name is required.';
+        }
+        if ($lastName === '') {
+            $fieldErrors['last_name']    = 'Last name is required.';
+        }
+        if ($email === '') {
+            $fieldErrors['email']        = 'Email is required.';
+        } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+            $fieldErrors['email'] = 'Invalid email format.';
+        }
+        if ($course === '') {
+            $fieldErrors['course']       = 'Course is required.';
+        }
+        if ($yearLevel === '') {
+            $fieldErrors['year_level']   = 'Year level is required.';
+        }
+        if ($section === '') {
+            $fieldErrors['section']      = 'Section is required.';
+        }
+        if ($parentEmail === '') {
+            $fieldErrors['parent_email'] = 'Parent email is required.';
+        } elseif (!filter_var($parentEmail, FILTER_VALIDATE_EMAIL)) {
+            $fieldErrors['parent_email'] = 'Invalid parent email format.';
+        }
+        if ($password === '') {
+            $fieldErrors['password']     = 'Password is required.';
+        } elseif (strlen($password) < 8) {
+            $fieldErrors['password'] = 'Password must be at least 8 characters.';
+        } elseif (!preg_match('/\d/', $password)) {
+            $fieldErrors['password'] = 'Password must include at least 1 number.';
+        } elseif (!preg_match('/[a-z]/', $password)) {
+            $fieldErrors['password'] = 'Password must include at least 1 lowercase letter.';
+        } elseif (!preg_match('/[A-Z]/', $password)) {
+            $fieldErrors['password'] = 'Password must include at least 1 uppercase letter.';
+        } elseif ($password !== $passwordConf) {
+            $fieldErrors['password_confirmation'] = 'Passwords do not match.';
+        }
 
         if (!empty($fieldErrors)) {
             http_response_code(422);
