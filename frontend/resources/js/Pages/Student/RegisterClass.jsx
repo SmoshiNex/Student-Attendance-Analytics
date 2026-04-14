@@ -1,15 +1,15 @@
 import { useState, useEffect } from "react"
-import { Button } from "@/Components/ui/button"
-import { Card } from "@/Components/ui/card"
 import { Input } from "@/Components/ui/input"
 import { Label } from "@/Components/ui/label"
+import { Button } from "@/Components/ui/button"
+import { Check, User, BookOpen, Lock } from "lucide-react"
 import axios from "axios"
 import { teacherClassApiUrl, authApiUrl } from "@/lib/nativeApi"
 import PasswordInput from "@/Components/ui/PasswordInput"
 import PasswordStrengthChecklist from "@/Components/ui/PasswordStrengthChecklist"
-import { ErrorModal, SuccessModal } from "@/Components/ui/AppModals"
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { getPasswordPolicyError } from "@/utils/passwordPolicy"
+import logoUrl from "@/lib/logo"
 
 export default function RegisterClass() {
   const navigate = useNavigate()
@@ -21,8 +21,9 @@ export default function RegisterClass() {
   const [loadError, setLoadError] = useState("")
   const [processing, setProcessing] = useState(false)
   const [success, setSuccess] = useState(false)
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
+  const [step, setStep] = useState(1)
   const [errors, setErrors] = useState({})
+  const [submitError, setSubmitError] = useState("")
 
   const [form, setForm] = useState({
     student_id: "",
@@ -44,16 +45,10 @@ export default function RegisterClass() {
       return
     }
 
-    const fetchClass = axios
-      .get(teacherClassApiUrl({ action: "get_class", id: classId }), {
-        withCredentials: true,
-      })
-      .catch(() => ({ data: null }))
-    const fetchStudent = axios
-      .get(authApiUrl("current_student"), { withCredentials: true })
-      .catch(() => ({ data: null }))
-
-    Promise.all([fetchClass, fetchStudent])
+    Promise.all([
+      axios.get(teacherClassApiUrl({ action: "get_class", id: classId }), { withCredentials: true }).catch(() => ({ data: null })),
+      axios.get(authApiUrl("current_student"), { withCredentials: true }).catch(() => ({ data: null })),
+    ])
       .then(([classRes, studentRes]) => {
         const cls = classRes?.data?.class || null
         if (!cls) {
@@ -66,130 +61,104 @@ export default function RegisterClass() {
       .finally(() => setLoading(false))
   }, [classId])
 
-  const setField = (key, value) =>
+  const setField = (key, value) => {
     setForm((prev) => ({ ...prev, [key]: value }))
+    if (errors[key]) setErrors((prev) => ({ ...prev, [key]: "" }))
+    if (submitError) setSubmitError("")
+  }
+
+  // Step 1 validation
+  const validateStep1 = () => {
+    const e = {}
+    if (!form.first_name.trim()) e.first_name = "First name is required."
+    if (!form.last_name.trim()) e.last_name = "Last name is required."
+    if (!form.student_id.trim()) e.student_id = "Student ID is required."
+    if (!form.email.trim()) e.email = "Email is required."
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  // Step 2 validation
+  const validateStep2 = () => {
+    const e = {}
+    if (!form.course.trim()) e.course = "Course is required."
+    if (!form.year_level.trim()) e.year_level = "Year level is required."
+    if (!form.section.trim()) e.section = "Section is required."
+    if (!form.parent_email.trim()) e.parent_email = "Parent email is required."
+    setErrors(e)
+    return Object.keys(e).length === 0
+  }
+
+  const handleNext = () => {
+    if (step === 1 && !validateStep1()) return
+    if (step === 2 && !validateStep2()) return
+    setStep((s) => s + 1)
+  }
+
+  const handleBack = () => {
+    setErrors({})
+    setStep((s) => s - 1)
+  }
 
   const handleQuickRegister = async () => {
-    if (!classId) {
-      setErrorModal({
-        open: true,
-        message: "Invalid class registration link.",
-      })
-      return
-    }
-
     setProcessing(true)
+    setSubmitError("")
     try {
-      await axios.post(
-        teacherClassApiUrl({
-          action: "register_student",
-          class_id: classId,
-        }),
-        {},
-        { withCredentials: true },
-      )
+      await axios.post(teacherClassApiUrl({ action: "register_student", class_id: classId }), {}, { withCredentials: true })
       setSuccess(true)
     } catch (err) {
-      setErrorModal({
-        open: true,
-        message:
-          err?.response?.data?.message || "Failed to enroll. Please try again.",
-      })
+      setSubmitError(err?.response?.data?.message || "Failed to enroll. Please try again.")
     } finally {
       setProcessing(false)
     }
   }
 
-  const handleRegister = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault()
-
-    if (!classId) {
-      setErrorModal({
-        open: true,
-        message: "Invalid class registration link.",
-      })
-      return
-    }
-
-    setProcessing(true)
-    setErrors({})
+    setSubmitError("")
 
     const passwordPolicyError = getPasswordPolicyError(form.password)
     if (passwordPolicyError) {
       setErrors({ password: passwordPolicyError })
-      setProcessing(false)
       return
     }
-
     if (form.password !== form.password_confirmation) {
-      setErrors({
-        password_confirmation: "Passwords do not match.",
-      })
-      setProcessing(false)
+      setErrors({ password_confirmation: "Passwords do not match." })
       return
     }
 
+    setProcessing(true)
     try {
-      await axios.post(
-        teacherClassApiUrl({
-          action: "register_student",
-          class_id: classId,
-        }),
-        form,
-        { withCredentials: true },
-      )
+      await axios.post(teacherClassApiUrl({ action: "register_student", class_id: classId }), form, { withCredentials: true })
       setSuccess(true)
     } catch (err) {
       const data = err?.response?.data
       if (data?.errors) setErrors(data.errors)
-      else
-        setErrorModal({
-          open: true,
-          message: data?.message || "Failed to enroll. Please try again.",
-        })
+      else setSubmitError(data?.message || "Failed to enroll. Please try again.")
     } finally {
       setProcessing(false)
     }
   }
 
   if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    )
+    return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-500">Loading...</p></div>
   }
 
   if (loadError) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-        <Card className="max-w-md w-full p-8 text-center">
-          <div className="w-14 h-14 bg-red-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-7 h-7 text-red-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M6 18L18 6M6 6l12 12"
-              />
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-lg p-8 max-w-md w-full text-center">
+          <div className="w-14 h-14 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <svg className="w-7 h-7 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
             </svg>
           </div>
-          <h2 className="text-lg font-bold text-gray-900 mb-2">
-            Class Not Found
-          </h2>
-          <p className="text-sm text-gray-600 mb-6">{loadError}</p>
-          <Link
-            to="/"
-            className="block w-full py-2.5 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-          >
+          <h2 className="text-lg font-bold text-gray-900 mb-2">Class Not Found</h2>
+          <p className="text-sm text-gray-500 mb-6">{loadError}</p>
+          <Link to="/" className="block w-full py-2.5 bg-black text-white rounded-xl font-medium hover:bg-gray-800 transition-colors">
             Back to Login
           </Link>
-        </Card>
+        </div>
       </div>
     )
   }
@@ -197,281 +166,234 @@ export default function RegisterClass() {
   if (success) {
     return (
       <div className="flex items-center justify-center min-h-screen bg-gray-100 p-4">
-        <Card className="max-w-md w-full p-8 text-center">
-          <div className="w-16 h-16 bg-green-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <svg
-              className="w-8 h-8 text-green-600"
-              fill="none"
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-            >
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth={2}
-                d="M5 13l4 4L19 7"
-              />
-            </svg>
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-lg p-8 max-w-md w-full text-center">
+          <div className="w-16 h-16 bg-gray-100 rounded-full flex items-center justify-center mx-auto mb-4">
+            <Check className="w-8 h-8 text-gray-800" />
           </div>
           <h2 className="text-2xl font-bold mb-2">Enrolled Successfully!</h2>
-          <p className="text-gray-600 mb-6">
-            You are now enrolled in {classItem?.class_code}.
-          </p>
-          <Link
-            to="/student/dashboard"
-            className="block w-full py-3 bg-black text-white rounded-lg font-medium hover:bg-gray-800 transition-colors"
-          >
+          <p className="text-gray-500 mb-6">You are now enrolled in <strong>{classItem?.class_code}</strong>.</p>
+          <Link to="/student/dashboard" className="block w-full py-3 bg-black text-white rounded-xl font-medium hover:bg-gray-800 transition-colors">
             Go to Dashboard
           </Link>
-        </Card>
+        </div>
+      </div>
+    )
+  }
+
+  // Class info banner — shown on all steps
+  const ClassBanner = () => (
+    <div className="bg-gray-900 text-white rounded-xl p-4 mb-6">
+      <p className="text-xs uppercase text-gray-400 mb-1">Enrolling in</p>
+      <h2 className="text-base font-bold">{classItem.class_code} — {classItem.subject_name}</h2>
+      <p className="text-sm text-gray-300">Instructor: {classItem.teacher?.first_name} {classItem.teacher?.last_name}</p>
+      {classItem.schedule && <p className="text-xs text-gray-400 mt-1">{classItem.schedule}</p>}
+    </div>
+  )
+
+  // Already logged in — quick enroll
+  if (student) {
+    return (
+      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-lg p-8 max-w-md w-full">
+          <div className="text-center mb-6">
+            <img src={logoUrl} alt="Logo" className="w-14 h-14 rounded-full object-cover mx-auto mb-3" />
+            <h1 className="text-2xl font-bold text-gray-900">Class Registration</h1>
+          </div>
+          <ClassBanner />
+          <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
+            <p className="font-semibold text-gray-900">Welcome back, {student.first_name}!</p>
+            <p className="text-sm text-gray-500 mt-1">You are already logged in. Click below to enroll.</p>
+          </div>
+          {submitError && <p className="text-xs text-red-600 font-medium mb-3">{submitError}</p>}
+          <Button className="w-full h-12 bg-black hover:bg-gray-800 text-white rounded-xl font-semibold" onClick={handleQuickRegister} disabled={processing}>
+            {processing ? "Enrolling..." : "Enroll In Class"}
+          </Button>
+          <div className="text-center mt-4">
+            <Link to="/" className="text-sm text-gray-500 hover:text-gray-900">← Back to Login</Link>
+          </div>
+        </div>
       </div>
     )
   }
 
   return (
-    <>
-      <div className="min-h-screen bg-gray-100 flex items-center justify-center p-4">
-        <Card className="max-w-md w-full p-8">
-          <div className="flex items-center mb-4">
-            <Button variant="ghost" size="sm" onClick={() => navigate(-1)}>
-              ← Back
-            </Button>
+    <div className="min-h-screen bg-gray-100 flex items-center justify-center px-4 py-8">
+      <div className="w-full max-w-lg">
+
+        {/* Header */}
+        <div className="text-center mb-6">
+          <img src={logoUrl} alt="Logo" className="w-14 h-14 rounded-full object-cover mx-auto mb-3" />
+          <h1 className="text-2xl font-extrabold text-gray-900">Class Registration</h1>
+          <p className="text-gray-500 mt-1 text-sm">Create your account and enroll</p>
+        </div>
+
+        <div className="bg-white rounded-3xl border border-gray-200 shadow-lg p-6 sm:p-8">
+
+          {/* Step indicator */}
+          <div className="flex items-center justify-center mb-6">
+            {[1, 2, 3].map((item, index) => {
+              const done = step > item
+              const active = step === item
+              return (
+                <div key={item} className="flex items-center">
+                  <div className={`h-10 w-10 rounded-full flex items-center justify-center text-sm font-bold transition-colors shrink-0 ${done || active ? "bg-black text-white" : "bg-gray-200 text-gray-500"}`}>
+                    {done ? <Check className="h-4 w-4" /> : item}
+                  </div>
+                  {index < 2 && (
+                    <div className={`h-1 w-16 sm:w-20 mx-2 rounded ${step > item ? "bg-black" : "bg-gray-200"}`} />
+                  )}
+                </div>
+              )
+            })}
           </div>
 
-          <div className="text-center mb-6">
-            <div className="flex justify-center mb-3">
-              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center">
-                <svg
-                  className="w-8 h-8 text-white"
-                  fill="currentColor"
-                  viewBox="0 0 20 20"
-                >
-                  <path d="M10.394 2.08a1 1 0 00-.788 0l-7 3a1 1 0 000 1.84L5.25 8.051a.999.999 0 01.356-.257l4-1.714a1 1 0 11.788 1.838L7.667 9.088l1.94.831a1 1 0 00.787 0l7-3a1 1 0 000-1.838l-7-3zM3.31 9.397L5 10.12v4.102a8.969 8.969 0 00-1.05-.174 1 1 0 01-.89-.89 11.115 11.115 0 01.25-3.762zM9.3 16.573A9.026 9.026 0 007 14.935v-3.957l1.818.78a3 3 0 002.364 0l5.508-2.361a11.026 11.026 0 01.25 3.762 1 1 0 01-.89.89 8.968 8.968 0 00-5.35 2.524 1 1 0 01-1.4 0zM6 18a1 1 0 001-1v-2.065a8.935 8.935 0 00-2-.712V17a1 1 0 001 1z" />
-                </svg>
-              </div>
-            </div>
-            <h1 className="text-3xl font-bold mb-2">Class Registration</h1>
-            <p className="text-gray-600">
-              Complete this form to enroll in the class
-            </p>
-          </div>
+          <ClassBanner />
 
-          <div className="bg-black text-white rounded-lg p-4 mb-6">
-            <p className="text-xs uppercase text-gray-400 mb-1">
-              You are enrolling in
-            </p>
-            <h2 className="text-lg font-bold mb-1">
-              {classItem.class_code} - {classItem.subject_name}
-            </h2>
-            <p className="text-sm text-gray-300">
-              Instructor: Prof. {classItem.teacher?.last_name}
-            </p>
-            {classItem.schedule && (
-              <p className="text-sm text-gray-300">{classItem.schedule}</p>
-            )}
-          </div>
+          {/* Step 1 — Personal Info */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div className="text-center mb-2">
+                <div className="h-14 w-14 rounded-2xl bg-gray-100 text-gray-700 flex items-center justify-center mx-auto mb-3">
+                  <User className="h-7 w-7" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Personal Information</h2>
+                <p className="text-sm text-gray-500 mt-1">Your name, student ID and email</p>
+              </div>
 
-          {student ? (
-            <div>
-              <div className="bg-green-50 border border-green-200 rounded-lg p-4 mb-4">
-                <p className="text-green-800 font-medium">
-                  Welcome back, {student.first_name}!
-                </p>
-                <p className="text-green-600 text-sm">
-                  Click below to register for this class
-                </p>
-              </div>
-              <Button
-                className="w-full"
-                size="lg"
-                onClick={handleQuickRegister}
-                disabled={processing}
-              >
-                {processing ? "Enrolling..." : "ENROLL IN CLASS"}
-              </Button>
-            </div>
-          ) : (
-            <form onSubmit={handleRegister} className="space-y-4">
-              <div>
-                <Label htmlFor="first_name">First Name *</Label>
-                <Input
-                  id="first_name"
-                  placeholder="Juan"
-                  value={form.first_name}
-                  onChange={(e) => setField("first_name", e.target.value)}
-                  required
-                />
-                {errors.first_name && (
-                  <p className="text-sm text-red-500 mt-1">
-                    {errors.first_name}
-                  </p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="last_name">Last Name *</Label>
-                <Input
-                  id="last_name"
-                  placeholder="Dela Cruz"
-                  value={form.last_name}
-                  onChange={(e) => setField("last_name", e.target.value)}
-                  required
-                />
-                {errors.last_name && (
-                  <p className="text-sm text-red-500 mt-1">
-                    {errors.last_name}
-                  </p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="student_id">Student ID *</Label>
-                <Input
-                  id="student_id"
-                  placeholder="2021-12345"
-                  value={form.student_id}
-                  onChange={(e) => setField("student_id", e.target.value)}
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  This will be your username for logging in
-                </p>
-                {errors.student_id && (
-                  <p className="text-sm text-red-500 mt-1">
-                    {errors.student_id}
-                  </p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="email">Student Email *</Label>
-                <Input
-                  id="email"
-                  type="email"
-                  placeholder="student@wmsu.edu.ph"
-                  value={form.email}
-                  onChange={(e) => setField("email", e.target.value)}
-                  required
-                />
-                {errors.email && (
-                  <p className="text-sm text-red-500 mt-1">{errors.email}</p>
-                )}
-              </div>
-              <div>
-                <Label htmlFor="course">Course *</Label>
-                <Input
-                  id="course"
-                  placeholder="BSIT"
-                  value={form.course}
-                  onChange={(e) => setField("course", e.target.value)}
-                  required
-                />
-                {errors.course && (
-                  <p className="text-sm text-red-500 mt-1">{errors.course}</p>
-                )}
-              </div>
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <Label htmlFor="year_level">Year Level *</Label>
-                  <Input
-                    id="year_level"
-                    placeholder="3"
-                    value={form.year_level}
-                    onChange={(e) => setField("year_level", e.target.value)}
-                    required
-                  />
-                  {errors.year_level && (
-                    <p className="text-sm text-red-500 mt-1">
-                      {errors.year_level}
-                    </p>
-                  )}
+                <div className="space-y-1">
+                  <Label htmlFor="first_name">First Name</Label>
+                  <Input id="first_name" placeholder="Juan" value={form.first_name} onChange={(e) => setField("first_name", e.target.value)} className="h-11 rounded-xl" />
+                  {errors.first_name && <p className="text-xs text-red-600">{errors.first_name}</p>}
                 </div>
-                <div>
-                  <Label htmlFor="section">Section *</Label>
-                  <Input
-                    id="section"
-                    placeholder="A"
-                    value={form.section}
-                    onChange={(e) => setField("section", e.target.value)}
-                    required
-                  />
-                  {errors.section && (
-                    <p className="text-sm text-red-500 mt-1">
-                      {errors.section}
-                    </p>
-                  )}
+                <div className="space-y-1">
+                  <Label htmlFor="last_name">Last Name</Label>
+                  <Input id="last_name" placeholder="Dela Cruz" value={form.last_name} onChange={(e) => setField("last_name", e.target.value)} className="h-11 rounded-xl" />
+                  {errors.last_name && <p className="text-xs text-red-600">{errors.last_name}</p>}
                 </div>
               </div>
-              <div>
-                <Label htmlFor="parent_email">
-                  Parent's/Guardian's Email *
-                </Label>
-                <Input
-                  id="parent_email"
-                  type="email"
-                  placeholder="parent@example.com"
-                  value={form.parent_email}
-                  onChange={(e) => setField("parent_email", e.target.value)}
-                  required
-                />
-                <p className="text-xs text-gray-500 mt-1">
-                  Attendance notifications will be sent here
-                </p>
-                {errors.parent_email && (
-                  <p className="text-sm text-red-500 mt-1">
-                    {errors.parent_email}
-                  </p>
-                )}
+
+              <div className="space-y-1">
+                <Label htmlFor="student_id">Student ID</Label>
+                <Input id="student_id" placeholder="2021-12345" value={form.student_id} onChange={(e) => setField("student_id", e.target.value)} className="h-11 rounded-xl" />
+                <p className="text-xs text-gray-400">This will be your username for logging in</p>
+                {errors.student_id && <p className="text-xs text-red-600">{errors.student_id}</p>}
               </div>
-              <div>
-                <Label htmlFor="password">Create Password *</Label>
-                <PasswordInput
-                  id="password"
-                  value={form.password}
-                  onChange={(e) => setField("password", e.target.value)}
-                  placeholder="Minimum 8 characters"
-                  required
-                />
-                {errors.password && (
-                  <p className="text-sm text-red-500 mt-1">{errors.password}</p>
-                )}
+
+              <div className="space-y-1">
+                <Label htmlFor="email">Student Email</Label>
+                <Input id="email" type="email" placeholder="student@wmsu.edu.ph" value={form.email} onChange={(e) => setField("email", e.target.value)} className="h-11 rounded-xl" />
+                {errors.email && <p className="text-xs text-red-600">{errors.email}</p>}
+              </div>
+
+              <Button onClick={handleNext} className="w-full h-12 rounded-xl bg-black hover:bg-gray-800 text-white font-semibold">
+                Next →
+              </Button>
+
+              <div className="text-center">
+                <Link to="/" className="text-sm text-gray-500 hover:text-gray-900">← Back to Login</Link>
+              </div>
+            </div>
+          )}
+
+          {/* Step 2 — Academic Info */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="text-center mb-2">
+                <div className="h-14 w-14 rounded-2xl bg-gray-100 text-gray-700 flex items-center justify-center mx-auto mb-3">
+                  <BookOpen className="h-7 w-7" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Academic Information</h2>
+                <p className="text-sm text-gray-500 mt-1">Your course, year, section and parent email</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="course">Course</Label>
+                <Input id="course" placeholder="BSIT" value={form.course} onChange={(e) => setField("course", e.target.value)} className="h-11 rounded-xl" />
+                {errors.course && <p className="text-xs text-red-600">{errors.course}</p>}
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1">
+                  <Label htmlFor="year_level">Year Level</Label>
+                  <Input id="year_level" placeholder="3" value={form.year_level} onChange={(e) => setField("year_level", e.target.value)} className="h-11 rounded-xl" />
+                  {errors.year_level && <p className="text-xs text-red-600">{errors.year_level}</p>}
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="section">Section</Label>
+                  <Input id="section" placeholder="A" value={form.section} onChange={(e) => setField("section", e.target.value)} className="h-11 rounded-xl" />
+                  {errors.section && <p className="text-xs text-red-600">{errors.section}</p>}
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="parent_email">Parent / Guardian Email</Label>
+                <Input id="parent_email" type="email" placeholder="parent@example.com" value={form.parent_email} onChange={(e) => setField("parent_email", e.target.value)} className="h-11 rounded-xl" />
+                <p className="text-xs text-gray-400">Attendance notifications will be sent here</p>
+                {errors.parent_email && <p className="text-xs text-red-600">{errors.parent_email}</p>}
+              </div>
+
+              <div className="flex gap-3">
+                <Button variant="outline" onClick={handleBack} className="flex-1 h-12 rounded-xl">
+                  ← Back
+                </Button>
+                <Button onClick={handleNext} className="flex-1 h-12 rounded-xl bg-black hover:bg-gray-800 text-white font-semibold">
+                  Next →
+                </Button>
+              </div>
+            </div>
+          )}
+
+          {/* Step 3 — Password */}
+          {step === 3 && (
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <div className="text-center mb-2">
+                <div className="h-14 w-14 rounded-2xl bg-gray-100 text-gray-700 flex items-center justify-center mx-auto mb-3">
+                  <Lock className="h-7 w-7" />
+                </div>
+                <h2 className="text-xl font-bold text-gray-900">Create Password</h2>
+                <p className="text-sm text-gray-500 mt-1">Set a secure password for your account</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="password">Password</Label>
+                <PasswordInput id="password" value={form.password} onChange={(e) => setField("password", e.target.value)} placeholder="Minimum 8 characters" className="h-11 rounded-xl" required />
                 <PasswordStrengthChecklist password={form.password} />
+                {errors.password && <p className="text-xs text-red-600">{errors.password}</p>}
               </div>
-              <div>
-                <Label htmlFor="password_confirmation">
-                  Confirm Password *
-                </Label>
+
+              <div className="space-y-1">
+                <Label htmlFor="password_confirmation">Confirm Password</Label>
                 <PasswordInput
                   id="password_confirmation"
                   value={form.password_confirmation}
-                  onChange={(e) =>
-                    setField("password_confirmation", e.target.value)
-                  }
+                  onChange={(e) => setField("password_confirmation", e.target.value)}
                   placeholder="Repeat your password"
+                  className={`h-11 rounded-xl ${form.password_confirmation ? form.password === form.password_confirmation ? "border-green-500 focus-visible:ring-green-500" : "border-red-500 focus-visible:ring-red-500" : ""}`}
                   required
                 />
-                {errors.password_confirmation && (
-                  <p className="text-sm text-red-500 mt-1">
-                    {errors.password_confirmation}
+                {form.password_confirmation && (
+                  <p className={`text-xs font-medium ${form.password === form.password_confirmation ? "text-green-600" : "text-red-600"}`}>
+                    {form.password === form.password_confirmation ? "Passwords match." : "Passwords do not match."}
                   </p>
                 )}
+                {errors.password_confirmation && <p className="text-xs text-red-600">{errors.password_confirmation}</p>}
               </div>
-              <Button
-                type="submit"
-                className="w-full"
-                size="lg"
-                disabled={processing}
-              >
-                {processing ? "Enrolling..." : "ENROLL IN CLASS"}
-              </Button>
+
+              {submitError && <p className="text-xs text-red-600 font-medium">{submitError}</p>}
+
+              <div className="flex gap-3">
+                <Button type="button" variant="outline" onClick={handleBack} className="flex-1 h-12 rounded-xl">
+                  ← Back
+                </Button>
+                <Button type="submit" disabled={processing} className="flex-1 h-12 rounded-xl bg-black hover:bg-gray-800 text-white font-semibold">
+                  {processing ? "Enrolling..." : "Enroll In Class"}
+                </Button>
+              </div>
             </form>
           )}
-        </Card>
+        </div>
       </div>
-
-      <ErrorModal
-        open={errorModal.open}
-        title="Enrollment Failed"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
-      />
-    </>
+    </div>
   )
 }

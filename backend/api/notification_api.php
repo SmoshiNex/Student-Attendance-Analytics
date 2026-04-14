@@ -150,18 +150,8 @@ try {
                 sendJsonResponse('error', 'id and status are required.', null, 422);
             }
 
-            // Ensure ownership before update.
-            $owned = $notification->listAll([
-                'user_type' => $currentUserType,
-                'user_id' => $currentUserId,
-            ]);
-            $ids = array_column($owned['notifications'], 'id');
-            if (!in_array($notificationId, array_map('intval', $ids), true)) {
-                sendJsonResponse('error', 'Forbidden', null, 403);
-            }
-
-            $result = $notification->updateStatus($notificationId, $status);
-            $code = ($result['status'] === 'success') ? 200 : 422;
+            $result = $notification->updateStatusForUser($notificationId, $status, $currentUserType, $currentUserId);
+            $code = $result['httpCode'] ?? (($result['status'] === 'success') ? 200 : 422);
             sendJsonResponse($result['status'], $result['message'], null, $code);
             break;
 
@@ -201,18 +191,8 @@ try {
                 sendJsonResponse('error', 'id is required.', null, 422);
             }
 
-            // Ensure ownership before delete.
-            $owned = $notification->listAll([
-                'user_type' => $currentUserType,
-                'user_id' => $currentUserId,
-            ]);
-            $ids = array_column($owned['notifications'], 'id');
-            if (!in_array($notificationId, array_map('intval', $ids), true)) {
-                sendJsonResponse('error', 'Forbidden', null, 403);
-            }
-
-            $result = $notification->delete($notificationId);
-            $code = ($result['status'] === 'success') ? 200 : 422;
+            $result = $notification->deleteForUser($notificationId, $currentUserType, $currentUserId);
+            $code = $result['httpCode'] ?? (($result['status'] === 'success') ? 200 : 422);
             sendJsonResponse($result['status'], $result['message'], null, $code);
             break;
 

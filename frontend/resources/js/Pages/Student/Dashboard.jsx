@@ -58,8 +58,10 @@ export default function StudentDashboard() {
           setAttendanceRate(Math.round((presentOrLate / records.length) * 100))
         }
       })
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) {
+          navigate("/", { replace: true })
+        }
       })
       .finally(() => setLoading(false))
   }, [navigate])

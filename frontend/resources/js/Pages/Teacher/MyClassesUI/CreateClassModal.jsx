@@ -7,7 +7,7 @@ import {
 } from "@/Components/ui/dialog"
 import { Input } from "@/Components/ui/input"
 import { Label } from "@/Components/ui/label"
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import axios from "axios"
 import { SuccessModal, ErrorModal } from "@/Components/ui/AppModals"
 
@@ -26,6 +26,41 @@ export default function CreateClassModal({ isOpen, onClose }) {
   const [successModal, setSuccessModal] = useState(false)
   const [errorModal, setErrorModal] = useState({ open: false, message: "" })
 
+  // Schedule Builder States
+  const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
+  const [selectedDays, setSelectedDays] = useState([])
+  const [startTime, setStartTime] = useState("")
+  const [endTime, setEndTime] = useState("")
+
+  const toggleDay = (day) => {
+    setSelectedDays((prev) =>
+      prev.includes(day) ? prev.filter((d) => d !== day) : [...prev, day],
+    )
+  }
+
+  const formatTime = (time24) => {
+    if (!time24) return ""
+    const [h, m] = time24.split(":")
+    let hours = parseInt(h, 10)
+    const ampm = hours >= 12 ? "PM" : "AM"
+    hours = hours % 12 || 12
+    return `${hours}:${m} ${ampm}`
+  }
+
+  // Auto-build the schedule string when builder states change
+  useEffect(() => {
+    if (selectedDays.length === 0 && !startTime && !endTime) return
+    const daysStr = selectedDays.length > 0 ? selectedDays.join(", ") : ""
+    const timeStr =
+      startTime && endTime
+        ? `${formatTime(startTime)} - ${formatTime(endTime)}`
+        : startTime
+          ? formatTime(startTime)
+          : ""
+    const finalStr = [daysStr, timeStr].filter(Boolean).join(" ")
+    updateField("schedule", finalStr)
+  }, [selectedDays, startTime, endTime])
+
   const updateField = (field, value) => {
     setData((prev) => ({ ...prev, [field]: value }))
   }
@@ -39,6 +74,9 @@ export default function CreateClassModal({ isOpen, onClose }) {
       room: "",
     })
     setErrors({})
+    setSelectedDays([])
+    setStartTime("")
+    setEndTime("")
   }
 
   const handleSubmit = async (e) => {
@@ -106,16 +144,48 @@ export default function CreateClassModal({ isOpen, onClose }) {
               )}
             </div>
 
-            <div>
-              <Label htmlFor="schedule">Schedule</Label>
+            <div className="bg-gray-50 p-3 rounded-md border border-gray-100">
+              <Label className="text-sm font-semibold text-gray-700">Schedule Builder</Label>
+              <p className="text-xs text-gray-500 mb-3">Select days and time to auto-generate the schedule</p>
+              
+              <div className="flex flex-wrap gap-2 mb-3">
+                {DAYS.map((day) => (
+                  <button
+                    key={day}
+                    type="button"
+                    onClick={() => toggleDay(day)}
+                    className={`px-3 py-1 text-xs sm:text-sm font-medium rounded-full border transition-colors ${
+                      selectedDays.includes(day)
+                        ? "bg-black text-white border-black"
+                        : "bg-white text-gray-700 border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    {day}
+                  </button>
+                ))}
+              </div>
+
+              <div className="flex gap-4 mb-4">
+                <div className="flex-1">
+                  <Label className="text-xs text-gray-500">Start Time</Label>
+                  <Input type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
+                </div>
+                <div className="flex-1">
+                  <Label className="text-xs text-gray-500">End Time</Label>
+                  <Input type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
+                </div>
+              </div>
+
+              <Label htmlFor="schedule" className="text-xs text-gray-500">Final Schedule (You can manually edit this)</Label>
               <Input
                 id="schedule"
-                placeholder="e.g., MWF 8:00-10:00 AM"
+                className="mt-1 font-mono text-sm"
+                placeholder="e.g., Mon, Wed 8:00 AM - 10:00 AM"
                 value={data.schedule}
                 onChange={(e) => updateField("schedule", e.target.value)}
               />
               {errors.schedule && (
-                <p className="text-sm text-red-500">{errors.schedule}</p>
+                <p className="text-sm text-red-500 mt-1">{errors.schedule}</p>
               )}
             </div>
 

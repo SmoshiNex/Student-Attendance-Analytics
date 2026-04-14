@@ -1,4 +1,4 @@
-export default function WelcomeSection({ teacherFirstName, teacherLastName }) {
+export default function WelcomeSection({ teacherFirstName, teacherMiddleName, teacherLastName }) {
   const toTitleCase = (value = "") =>
     String(value)
       .trim()
@@ -15,7 +15,7 @@ export default function WelcomeSection({ teacherFirstName, teacherLastName }) {
     day: "numeric",
   })
 
-  const teacherName = [teacherFirstName, teacherLastName]
+  const teacherName = [teacherFirstName, teacherMiddleName, teacherLastName]
     .filter(Boolean)
     .map((part) => toTitleCase(part))
     .join(" ")

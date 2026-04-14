@@ -20,6 +20,8 @@ import StudentNotifications from "./Pages/Student/Notifications"
 import StudentAnalytics from "./Pages/Student/Analytics"
 import StudentChatbot from "./Pages/Student/Chatbot"
 import RegisterClass from "./Pages/Student/RegisterClass"
+import TeacherMessages from "./Pages/Teacher/Messages"
+import StudentMessages from "./Pages/Student/Messages"
 import GlobalLoadingBar from "@/Components/ui/GlobalLoadingBar"
 
 window.APP_BASE = APP_BASE
@@ -66,6 +68,8 @@ function App() {
           />
           <Route path="/student/analytics" element={<StudentAnalytics />} />
           <Route path="/student/chatbot" element={<StudentChatbot />} />
+          <Route path="/teacher/messages" element={<TeacherMessages />} />
+          <Route path="/student/messages" element={<StudentMessages />} />
           <Route
             path="/student/register-class/:classId"
             element={<RegisterClass />}

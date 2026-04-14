@@ -56,30 +56,36 @@ export default function ClassCard({
         </div>
 
         <div className="flex items-center gap-1 self-end sm:self-auto shrink-0">
-          <Button
-            variant="ghost"
-            className="h-8 w-8 p-1"
-            onClick={() => onViewStudents(classItem)}
-            title="View enrolled students"
-          >
-            <Eye className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            className="h-8 w-8 p-1"
-            onClick={() => onEdit(classItem)}
-            title="Edit class"
-          >
-            <Edit className="h-4 w-4" />
-          </Button>
-          <Button
-            variant="ghost"
-            className="h-8 w-8 p-1 text-red-500 hover:text-red-700"
-            onClick={() => onDelete(classItem)}
-            title="Delete class"
-          >
-            <Trash2 className="h-4 w-4" />
-          </Button>
+          <div className="flex flex-col items-center">
+            <Button
+              variant="ghost"
+              className="h-8 w-8 p-1"
+              onClick={() => onViewStudents(classItem)}
+            >
+              <Eye className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-gray-400">Students</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <Button
+              variant="ghost"
+              className="h-8 w-8 p-1"
+              onClick={() => onEdit(classItem)}
+            >
+              <Edit className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-gray-400">Edit</span>
+          </div>
+          <div className="flex flex-col items-center">
+            <Button
+              variant="ghost"
+              className="h-8 w-8 p-1 text-red-500 hover:text-red-700"
+              onClick={() => onDelete(classItem)}
+            >
+              <Trash2 className="h-4 w-4" />
+            </Button>
+            <span className="text-xs text-red-400">Delete</span>
+          </div>
         </div>
       </div>
 

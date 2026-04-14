@@ -1,4 +1,5 @@
 import { Button } from "@/Components/ui/button"
+import { ConfirmModal } from "@/Components/ui/AppModals"
 import { authApiUrl } from "@/lib/nativeApi"
 import logoUrl from "@/lib/logo"
 import {
@@ -9,6 +10,7 @@ import {
   LogOut,
   Menu,
   MessageCircle,
+  MessageSquare,
   TrendingUp,
   X,
 } from "lucide-react"
@@ -57,6 +59,13 @@ const studentNavLinks = [
     label: "Chatbot",
     to: "/student/chatbot",
     icon: MessageCircle,
+    group: "communication",
+  },
+  {
+    key: "messages",
+    label: "Messages",
+    to: "/student/messages",
+    icon: MessageSquare,
     group: "communication",
   },
 ]
@@ -113,6 +122,8 @@ export default function Header({ active = "dashboard" }) {
   const navigate = useNavigate()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [studentProfile, setStudentProfile] = useState(null)
+  const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
+  const [logoutProcessing, setLogoutProcessing] = useState(false)
   const [isDesktopCollapsed, setIsDesktopCollapsed] = useState(() => {
     if (typeof window === "undefined") return false
     return window.localStorage.getItem("studentSidebarCollapsed") === "1"
@@ -179,12 +190,23 @@ export default function Header({ active = "dashboard" }) {
   }, [])
 
   const handleLogout = async () => {
+    if (logoutProcessing) {
+      return
+    }
+
+    setLogoutProcessing(true)
     try {
       await axios.post(authApiUrl("logout"), {}, { withCredentials: true })
     } finally {
+      setConfirmLogoutOpen(false)
+      setLogoutProcessing(false)
       window.localStorage.removeItem("nativeStudentId")
       navigate("/", { replace: true })
     }
+  }
+
+  const handleLogoutRequest = () => {
+    setConfirmLogoutOpen(true)
   }
 
   const handleMobileNavigate = (to) => {
@@ -352,7 +374,7 @@ export default function Header({ active = "dashboard" }) {
           <Button
             variant="default"
             size="sm"
-            onClick={handleLogout}
+            onClick={handleLogoutRequest}
             className={`bg-black hover:bg-gray-800 text-white ${
               isDesktopCollapsed ? "w-10 h-10 p-0 mx-auto" : "w-full"
             }`}
@@ -461,7 +483,7 @@ export default function Header({ active = "dashboard" }) {
             <Button
               variant="default"
               size="sm"
-              onClick={handleLogout}
+              onClick={handleLogoutRequest}
               className="w-full bg-black hover:bg-gray-800 text-white"
             >
               <LogOut className="h-4 w-4 mr-2" />
@@ -470,6 +492,21 @@ export default function Header({ active = "dashboard" }) {
           </div>
         </aside>
       </div>
+
+      <ConfirmModal
+        open={confirmLogoutOpen}
+        title="Confirm Logout"
+        message="Are you sure you want to logout?"
+        confirmLabel={logoutProcessing ? "Logging out..." : "Logout"}
+        cancelLabel="Cancel"
+        onCancel={() => {
+          if (logoutProcessing) {
+            return
+          }
+          setConfirmLogoutOpen(false)
+        }}
+        onConfirm={handleLogout}
+      />
     </>
   )
 }

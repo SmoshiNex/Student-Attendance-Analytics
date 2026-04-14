@@ -133,6 +133,73 @@ class Notification
         ];
     }
 
+    private function findOwnedNotification($notificationId, $userType, $userId)
+    {
+        $query = "SELECT id, status FROM {$this->table}
+                  WHERE id = :id AND user_type = :user_type AND user_id = :user_id
+                  LIMIT 1";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([
+            ':id' => (int)$notificationId,
+            ':user_type' => trim((string)$userType),
+            ':user_id' => (int)$userId,
+        ]);
+
+        return $stmt->fetch(PDO::FETCH_ASSOC) ?: null;
+    }
+
+    public function updateStatusForUser($notificationId, $status, $userType, $userId)
+    {
+        $notificationId = (int)$notificationId;
+        $status = strtolower(trim((string)$status));
+        $userType = trim((string)$userType);
+        $userId = (int)$userId;
+
+        $allowed = ['success', 'failed', 'pending'];
+        if ($notificationId <= 0 || $userType === '' || $userId <= 0 || !in_array($status, $allowed, true)) {
+            return [
+                'status' => 'error',
+                'message' => 'Valid notification ID and status are required.',
+                'httpCode' => 422,
+            ];
+        }
+
+        $owned = $this->findOwnedNotification($notificationId, $userType, $userId);
+        if (!$owned) {
+            return [
+                'status' => 'error',
+                'message' => 'Forbidden',
+                'httpCode' => 403,
+            ];
+        }
+
+        if (strtolower((string)($owned['status'] ?? '')) === $status) {
+            return [
+                'status' => 'error',
+                'message' => 'Notification not found or unchanged.',
+                'httpCode' => 422,
+            ];
+        }
+
+        $query = "UPDATE {$this->table}
+                  SET status = :status, updated_at = NOW()
+                  WHERE id = :id AND user_type = :user_type AND user_id = :user_id";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([
+            ':status' => $status,
+            ':id' => $notificationId,
+            ':user_type' => $userType,
+            ':user_id' => $userId,
+        ]);
+
+        return [
+            'status' => 'success',
+            'message' => 'Notification status updated successfully.'
+        ];
+    }
+
     public function updateStatus($notificationId, $status)
     {
         $notificationId = (int)$notificationId;
@@ -237,6 +304,45 @@ class Notification
             'status' => 'success',
             'message' => 'All notifications marked as read.',
             'updated' => $stmt->rowCount(),
+        ];
+    }
+
+    public function deleteForUser($notificationId, $userType, $userId)
+    {
+        $notificationId = (int)$notificationId;
+        $userType = trim((string)$userType);
+        $userId = (int)$userId;
+
+        if ($notificationId <= 0 || $userType === '' || $userId <= 0) {
+            return [
+                'status' => 'error',
+                'message' => 'Invalid notification ID.',
+                'httpCode' => 422,
+            ];
+        }
+
+        $owned = $this->findOwnedNotification($notificationId, $userType, $userId);
+        if (!$owned) {
+            return [
+                'status' => 'error',
+                'message' => 'Forbidden',
+                'httpCode' => 403,
+            ];
+        }
+
+        $query = "DELETE FROM {$this->table}
+                  WHERE id = :id AND user_type = :user_type AND user_id = :user_id";
+
+        $stmt = $this->conn->prepare($query);
+        $stmt->execute([
+            ':id' => $notificationId,
+            ':user_type' => $userType,
+            ':user_id' => $userId,
+        ]);
+
+        return [
+            'status' => 'success',
+            'message' => 'Notification deleted successfully.'
         ];
     }
 

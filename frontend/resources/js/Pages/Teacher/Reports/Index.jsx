@@ -123,7 +123,7 @@ export default function ReportsIndex({
   }
 
   const exportReport = () => {
-    const headers = ["Student Name", "Student ID", "Class", "Date", "Status"]
+    const headers = ["Student Name", "Student ID", "Class", "Date", "Check-in Time", "Status"]
     const rows = localRecords.map((record) => {
       const studentName =
         record.studentName ||
@@ -135,20 +135,45 @@ export default function ReportsIndex({
       const className =
         record.class ||
         (record.session?.teacherClass
-          ? `${record.session.teacherClass.class_code || ""}${record.session.teacherClass.subject_name ? ` - ${record.session.teacherClass.subject_name}` : ""}`.trim()
+          ? `${record.session.teacherClass.class_code || ""}${
+              record.session.teacherClass.subject_name
+                ? ` - ${record.session.teacherClass.subject_name}`
+                : ""
+            }`.trim()
           : "") ||
         "Unknown Class"
-      const date = record.date || record.checked_in_at || ""
+
+      let formattedDate = ""
+      const rawDate = record.date || record.checked_in_at
+      if (rawDate) {
+        const d = new Date(rawDate)
+        if (!isNaN(d.getTime())) {
+          formattedDate = d.toLocaleDateString("en-US", {
+            year: "numeric", month: "short", day: "numeric",
+          })
+        }
+      }
+
+      let checkInTime = "—"
+      if (record.checked_in_time) {
+        checkInTime = record.checked_in_time
+      } else if (record.checked_in_at) {
+        const d = new Date(record.checked_in_at)
+        if (!isNaN(d.getTime())) {
+          checkInTime = d.toLocaleTimeString("en-US", {
+            hour: "2-digit", minute: "2-digit", hour12: true,
+          })
+        }
+      }
+
       const status = (record.status || "").toUpperCase()
-      return [studentName, studentId, className, date, status]
+      return [studentName, studentId, className, formattedDate, checkInTime, status]
         .map((v) => `"${String(v).replaceAll('"', '""')}"`)
         .join(",")
     })
 
     const csvContent = [headers.join(","), ...rows].join("\n")
-    const blob = new Blob([csvContent], {
-      type: "text/csv;charset=utf-8;",
-    })
+    const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
     const link = document.createElement("a")
     link.href = url
@@ -159,6 +184,87 @@ export default function ReportsIndex({
     URL.revokeObjectURL(url)
   }
 
+  const exportPdf = () => {
+    import("jspdf").then(({ default: jsPDF }) => {
+      import("jspdf-autotable").then(({ applyPlugin, autoTable }) => {
+        applyPlugin(jsPDF)
+        const doc = new jsPDF({ orientation: "landscape" })
+
+        doc.setFontSize(16)
+        doc.text("Attendance Report", 14, 18)
+        doc.setFontSize(10)
+        doc.setTextColor(120)
+        doc.text(`Generated: ${new Date().toLocaleString()}`, 14, 25)
+        doc.setTextColor(0)
+
+        const head = [["Student Name", "Student ID", "Class", "Date", "Check-in Time", "Status"]]
+        const body = localRecords.map((record) => {
+          const studentName =
+            record.studentName ||
+            (record.student
+              ? `${record.student.first_name || ""} ${record.student.last_name || ""}`.trim()
+              : "") ||
+            "Unknown Student"
+          const studentId = record.studentId || record.student?.student_id || ""
+          const className =
+            record.class ||
+            (record.session?.teacherClass
+              ? `${record.session.teacherClass.class_code || ""}${
+                  record.session.teacherClass.subject_name
+                    ? ` - ${record.session.teacherClass.subject_name}`
+                    : ""
+                }`.trim()
+              : "") ||
+            "Unknown Class"
+
+          let formattedDate = ""
+          const rawDate = record.date || record.checked_in_at
+          if (rawDate) {
+            const d = new Date(rawDate)
+            if (!isNaN(d.getTime())) {
+              formattedDate = d.toLocaleDateString("en-US", {
+                year: "numeric", month: "short", day: "numeric",
+              })
+            }
+          }
+
+          let checkInTime = "—"
+          if (record.checked_in_time) {
+            checkInTime = record.checked_in_time
+          } else if (record.checked_in_at) {
+            const d = new Date(record.checked_in_at)
+            if (!isNaN(d.getTime())) {
+              checkInTime = d.toLocaleTimeString("en-US", {
+                hour: "2-digit", minute: "2-digit", hour12: true,
+              })
+            }
+          }
+
+          return [studentName, studentId, className, formattedDate, checkInTime, (record.status || "").toUpperCase()]
+        })
+
+        autoTable(doc, {
+          startY: 32,
+          head,
+          body,
+          theme: "grid",
+          styles: { fontSize: 9, cellPadding: 3 },
+          headStyles: { fillColor: [11, 43, 70], textColor: 255, fontStyle: "bold" },
+          didParseCell(data) {
+            if (data.section === "body" && data.column.index === 5) {
+              const s = String(data.cell.raw).toLowerCase()
+              if (s === "present") data.cell.styles.textColor = [22, 163, 74]
+              else if (s === "late") data.cell.styles.textColor = [202, 138, 4]
+              else if (s === "absent") data.cell.styles.textColor = [220, 38, 38]
+            }
+          },
+        })
+
+        doc.save("attendance-reports.pdf")
+      })
+    })
+  }
+
   return (
     <div className="min-h-screen bg-gray-100 teacher-shell">
       <Header active="reports" />
@@ -167,13 +273,23 @@ export default function ReportsIndex({
           <h1 className="text-2xl sm:text-3xl font-bold text-gray-900">
             Attendance Reports
           </h1>
-          <Button
-            onClick={exportReport}
-            className="flex items-center justify-center gap-2 w-full sm:w-auto"
-          >
-            <Download className="w-4 h-4" />
-            Export CSV
-          </Button>
+          <div className="flex w-full sm:w-auto gap-2">
+            <Button
+              onClick={exportReport}
+              variant="outline"
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              CSV
+            </Button>
+            <Button
+              onClick={exportPdf}
+              className="flex-1 sm:flex-none flex items-center justify-center gap-2"
+            >
+              <Download className="w-4 h-4" />
+              PDF
+            </Button>
+          </div>
         </div>
 
         <ReportsFilters

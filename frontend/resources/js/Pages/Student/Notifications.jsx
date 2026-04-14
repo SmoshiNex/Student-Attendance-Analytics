@@ -14,8 +14,8 @@ export default function StudentNotifications() {
     axios
       .get(notificationApiUrl("list"), { withCredentials: true })
       .then((res) => setNotifications(res.data?.notifications || []))
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) navigate("/", { replace: true })
       })
       .finally(() => setLoading(false))
   }
@@ -30,8 +30,8 @@ export default function StudentNotifications() {
         }
         fetchNotifications()
       })
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) navigate("/", { replace: true })
       })
   }, [navigate])
 

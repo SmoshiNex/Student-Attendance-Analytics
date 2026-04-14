@@ -147,6 +147,111 @@ class EmailService
         }
     }
 
+        /**
+         * Send a 6-digit OTP code for password reset verification.
+         */
+        public function sendPasswordResetOtp(
+                string $recipientEmail,
+                string $recipientName,
+                string $otpCode,
+                string $accountLabel = 'Account'
+        ): array {
+                $recipientEmail = trim($recipientEmail);
+                $recipientName = trim($recipientName);
+                $otpCode = trim($otpCode);
+                $accountLabel = trim($accountLabel);
+
+                if ($recipientEmail === '' || $otpCode === '') {
+                        return ['success' => false, 'message' => 'Recipient email and OTP code are required.'];
+                }
+
+                try {
+                        $this->requirePHPMailer();
+                        $this->assertMailConfig();
+
+                        $mail = new PHPMailer(true);
+                        $mail->isSMTP();
+                        $mail->Host       = $this->host;
+                        $mail->SMTPAuth   = true;
+                        $mail->Username   = $this->username;
+                        $mail->Password   = $this->password;
+
+                        $secureMode = strtolower($this->encryption);
+                        if ($secureMode === 'ssl') {
+                                $mail->SMTPSecure = PHPMailer::ENCRYPTION_SMTPS;
+                        } elseif ($secureMode === 'none' || $secureMode === '') {
+                                $mail->SMTPSecure = '';
+                        } else {
+                                $mail->SMTPSecure = PHPMailer::ENCRYPTION_STARTTLS;
+                        }
+
+                        $mail->Port = $this->port;
+                        $mail->setFrom($this->fromEmail, $this->fromName);
+                        $mail->addAddress($recipientEmail, $recipientName !== '' ? $recipientName : '');
+
+                        $label = $accountLabel !== '' ? $accountLabel : 'Account';
+                        $safeName = $recipientName !== '' ? htmlspecialchars($recipientName, ENT_QUOTES, 'UTF-8') : 'User';
+                        $safeCode = htmlspecialchars($otpCode, ENT_QUOTES, 'UTF-8');
+                        $safeLabel = htmlspecialchars($label, ENT_QUOTES, 'UTF-8');
+
+                        $isRegistration = stripos($label, 'registr') !== false;
+                        $subjectContext = $isRegistration ? 'Account Verification' : 'Password Reset';
+                        $bodyContext   = $isRegistration ? 'verify your email address and complete your registration' : 'reset your password';
+                        $bodyHeading   = $isRegistration ? 'Email Verification OTP' : 'Password Reset OTP';
+
+                        $mail->Subject = "{$subjectContext} OTP - Smart Campus Attendance";
+                        $mail->isHTML(true);
+                        $mail->Body = '<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1.0">
+<title>' . $subjectContext . '</title>
+</head>
+<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f3f4f6;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:24px 12px;">
+    <tr>
+        <td align="center">
+            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,0.08);">
+                <tr>
+                    <td style="background:#111827;padding:22px 24px;color:#ffffff;">
+                        <h2 style="margin:0;font-size:20px;line-height:1.3;">Smart Campus Attendance</h2>
+                        <p style="margin:6px 0 0 0;font-size:13px;opacity:0.9;">' . $bodyHeading . '</p>
+                    </td>
+                </tr>
+                <tr>
+                    <td style="padding:24px;">
+                        <p style="margin:0 0 14px 0;color:#111827;font-size:15px;">Hello ' . $safeName . ',</p>
+                        <p style="margin:0 0 14px 0;color:#374151;font-size:14px;line-height:1.6;">We received a request to ' . $bodyContext . ' for your <strong>' . $safeLabel . '</strong>. Use the OTP code below to continue:</p>
+                        <div style="margin:18px 0;padding:14px 16px;border:1px dashed #d1d5db;background:#f9fafb;border-radius:10px;text-align:center;">
+                            <span style="display:inline-block;letter-spacing:8px;font-size:28px;font-weight:700;color:#111827;">' . $safeCode . '</span>
+                        </div>
+                        <p style="margin:0 0 10px 0;color:#374151;font-size:14px;">This OTP expires in 10 minutes. Do not share this code with anyone.</p>
+                        <p style="margin:0;color:#6b7280;font-size:13px;">If you did not request this, you can safely ignore this email.</p>
+                    </td>
+                </tr>
+            </table>
+        </td>
+    </tr>
+</table>
+</body>
+</html>';
+
+                        $mail->AltBody = "Smart Campus Attendance - {$subjectContext}\n"
+                                . "Hello " . ($recipientName !== '' ? $recipientName : 'User') . ",\n\n"
+                                . "Use this OTP code to {$bodyContext}: " . $otpCode . "\n"
+                                . "This code expires in 10 minutes.\n\n"
+                                . "If you did not request this, ignore this email.";
+
+                        $mail->send();
+
+                        return ['success' => true, 'message' => 'OTP sent successfully.'];
+                } catch (\Exception $e) {
+                        error_log('EmailService::sendPasswordResetOtp error: ' . $e->getMessage());
+                        return ['success' => false, 'message' => $e->getMessage()];
+                }
+        }
+
     // ── Private helpers ─────────────────────────────────────────────────────
 
     private function loadMailConfig(): void

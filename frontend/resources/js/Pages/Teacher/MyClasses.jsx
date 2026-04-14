@@ -35,8 +35,8 @@ export default function MyClasses() {
     axios
       .get(teacherClassApiUrl(), { withCredentials: true })
       .then((res) => setClasses(res.data?.classes || []))
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) navigate("/", { replace: true })
       })
       .finally(() => setLoading(false))
   }

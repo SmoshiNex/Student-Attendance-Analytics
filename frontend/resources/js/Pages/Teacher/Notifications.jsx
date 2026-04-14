@@ -15,8 +15,8 @@ export default function TeacherNotifications() {
     axios
       .get(notificationApiUrl("list"), { withCredentials: true })
       .then((res) => setNotifications(res.data?.notifications || []))
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) navigate("/", { replace: true })
       })
       .finally(() => setLoading(false))
   }

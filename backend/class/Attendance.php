@@ -577,6 +577,39 @@ class Attendance
         ];
     }
 
+    public function getStudentHistory($studentPkId)
+    {
+        $historyQuery = "SELECT ar.id, ar.status, ar.checked_in_at,
+                                DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%M %d, %Y %h:%i %p') AS checked_in_at_formatted,
+                                COALESCE(
+                                    NULLIF(c.class_name, ''),
+                                    CASE
+                                        WHEN c.class_code <> '' AND c.subject_name <> ''
+                                            THEN CONCAT(c.class_code, ' - ', c.subject_name)
+                                        WHEN c.subject_name <> '' THEN c.subject_name
+                                        WHEN c.class_code  <> '' THEN c.class_code
+                                        ELSE 'Unknown Class'
+                                    END
+                                ) AS class_name,
+                                c.subject_name,
+                                c.class_code,
+                                CONCAT(t.first_name, ' ', t.last_name) AS teacher_name
+                         FROM {$this->recordTable} ar
+                         INNER JOIN {$this->sessionTable} s ON s.id = ar.attendance_session_id
+                         INNER JOIN {$this->classTable} c ON c.id = s.teacher_class_id
+                         INNER JOIN teachers t ON t.id = c.teacher_id
+                         WHERE ar.student_id = :student_id
+                         ORDER BY COALESCE(ar.checked_in_at, ar.created_at) DESC";
+
+        $historyStmt = $this->conn->prepare($historyQuery);
+        $historyStmt->execute([':student_id' => (int)$studentPkId]);
+
+        return [
+            'status' => 'success',
+            'records' => $historyStmt->fetchAll(PDO::FETCH_ASSOC),
+        ];
+    }
+
     public function getTeacherReports($teacherId, $filters = [])
     {
         $params = [':teacher_id' => (int)$teacherId];
@@ -636,6 +669,7 @@ class Attendance
                 'id' => (int)$row['id'],
                 'status' => $row['status'],
                 'checked_in_at' => $checkedInAt,
+                'checked_in_time' => $checkedInAt ? date('h:i A', strtotime($checkedInAt)) : null,
                 'date' => $dateValue,
                 'class' => $className,
                 'studentName' => trim(($row['first_name'] ?? '') . ' ' . ($row['last_name'] ?? '')),
@@ -680,6 +714,9 @@ class Attendance
             return ['status' => 'error', 'message' => 'Unauthorized or class not found.'];
         }
 
+        // SQL FEATURE: CTE AT LEAST 1
+        // SQL FEATURE: MULTIPLE JOINS (3 OR MORE TABLES IN 1 QUERY)
+        // SQL FEATURE: AGGREGATION SQL (MORE THAN 2 OR 3, 4)
         // CTE (session_stats): aggregate present/late/absent counts per ended session, then compute overall avg/max/min attendance rate across all sessions for this class
         $overviewQuery = "
             WITH session_stats AS (
@@ -749,11 +786,12 @@ class Attendance
             $enrolled = (int)$row['total_enrolled'];
             $rate = $enrolled > 0 ? round(((int)$row['attended'] / $enrolled) * 100, 1) : 0;
             return [
-                'session_id'    => (int)$row['session_id'],
-                'label'         => $row['label'],
-                'present'       => (int)$row['present_count'],
-                'late'          => (int)$row['late_count'],
-                'absent'        => (int)$row['absent_count'],
+                'session_id'      => (int)$row['session_id'],
+                'label'           => $row['label'],
+                'started_at'      => substr((string)$row['started_at'], 0, 10),
+                'present'         => (int)$row['present_count'],
+                'late'            => (int)$row['late_count'],
+                'absent'          => (int)$row['absent_count'],
                 'attendance_rate' => $rate,
             ];
         }, $trendRows);
@@ -824,6 +862,29 @@ class Attendance
             ];
         }, $studentRows);
 
+        // Build a session→student→{status,checked_in_at} lookup for frontend date-filtered student recalculation
+        $recordsQuery = "
+            SELECT ar.attendance_session_id, ar.student_id, ar.status,
+                   DATE_FORMAT(ar.checked_in_at, '%h:%i %p') AS checked_in_at
+            FROM {$this->recordTable} ar
+            INNER JOIN {$this->sessionTable} s ON s.id = ar.attendance_session_id
+            WHERE s.teacher_class_id = :class_id AND s.status = 'ended'
+        ";
+        $recordsStmt = $this->conn->prepare($recordsQuery);
+        $recordsStmt->execute([':class_id' => $classId]);
+        $recordRows = $recordsStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        $recordsBySession = [];
+        foreach ($recordRows as $rec) {
+            $sid = (int)$rec['attendance_session_id'];
+            $stid = (int)$rec['student_id'];
+            if (!isset($recordsBySession[$sid])) $recordsBySession[$sid] = [];
+            $recordsBySession[$sid][$stid] = [
+                'status'        => $rec['status'],
+                'checked_in_at' => $rec['checked_in_at'],
+            ];
+        }
+
         return [
             'status' => 'success',
             'data' => [
@@ -843,8 +904,9 @@ class Attendance
                     'total_late'          => (int)($overview['total_late'] ?? 0),
                     'total_absent'        => (int)($overview['total_absent'] ?? 0),
                 ],
-                'trend'    => $trend,
-                'students' => $students,
+                'trend'              => $trend,
+                'students'           => $students,
+                'records_by_session' => $recordsBySession,
             ],
         ];
     }
@@ -923,6 +985,46 @@ class Attendance
         $monthlyStmt->execute([':student_id' => $studentPkId]);
         $monthlyRows = $monthlyStmt->fetchAll(PDO::FETCH_ASSOC);
 
+        // Per-class session timeline: each ended session for every class the student is enrolled in
+        $sessionTimelineQuery = "
+            SELECT
+                c.id AS class_id,
+                s.id AS session_id,
+                DATE_FORMAT(s.started_at, '%b %d, %Y') AS session_label,
+                s.started_at,
+                COALESCE(ar.status, 'absent')                                     AS status,
+                CASE WHEN ar.status IN ('present','late') THEN 1 ELSE 0 END       AS attended,
+                CASE WHEN ar.checked_in_at IS NOT NULL
+                     THEN DATE_FORMAT(ar.checked_in_at, '%h:%i %p')
+                     ELSE NULL END                                                 AS checked_in_at
+            FROM {$this->classStudentTable} cs
+            INNER JOIN {$this->classTable} c  ON c.id = cs.teacher_class_id
+            INNER JOIN {$this->sessionTable} s ON s.teacher_class_id = c.id AND s.status = 'ended'
+            LEFT JOIN {$this->recordTable} ar
+                ON ar.attendance_session_id = s.id AND ar.student_id = cs.student_id
+            WHERE cs.student_id = :student_id
+            ORDER BY c.id ASC, s.started_at ASC
+        ";
+        $timelineStmt = $this->conn->prepare($sessionTimelineQuery);
+        $timelineStmt->execute([':student_id' => $studentPkId]);
+        $timelineRows = $timelineStmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Group timeline rows by class_id
+        $timelineByClass = [];
+        foreach ($timelineRows as $row) {
+            $cid = (int)$row['class_id'];
+            if (!isset($timelineByClass[$cid])) {
+                $timelineByClass[$cid] = [];
+            }
+            $timelineByClass[$cid][] = [
+                'session_id'    => (int)$row['session_id'],
+                'label'         => $row['session_label'],
+                'status'        => $row['status'],
+                'attended'      => (bool)$row['attended'],
+                'checked_in_at' => $row['checked_in_at'] ?? null,
+            ];
+        }
+
         $classes = array_map(function ($row) {
             $className = trim((string)($row['class_name'] ?? ''));
             if ($className === '') {
@@ -954,6 +1056,7 @@ class Attendance
         return [
             'status' => 'success',
             'data' => [
+                'timeline_by_class' => $timelineByClass,
                 'summary' => [
                     'total_classes'           => (int)($summary['total_classes'] ?? 0),
                     'total_sessions_attended' => (int)($summary['total_sessions_attended'] ?? 0),
@@ -967,6 +1070,7 @@ class Attendance
             ],
         ];
     }
+
 
     public function getClassesWithTodayStats($teacherId)
     {

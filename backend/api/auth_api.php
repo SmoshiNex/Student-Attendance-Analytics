@@ -85,11 +85,47 @@ try {
                 $payload['email'] ?? '',
                 $payload['department'] ?? '',
                 $payload['password'] ?? '',
-                $payload['password_confirmation'] ?? ''
+                $payload['password_confirmation'] ?? '',
+                $payload['middle_name'] ?? ''
             );
 
             $code = ($result['status'] === 'success') ? 201 : 422;
             sendJsonResponse($result['status'], $result['message'], null, $code);
+            break;
+
+        case 'teacher_register_send_otp':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->teacherSendRegisterOtp(
+                $payload['first_name'] ?? '',
+                $payload['middle_name'] ?? '',
+                $payload['last_name'] ?? '',
+                $payload['email'] ?? '',
+                $payload['department'] ?? ''
+            );
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], [
+                'destination' => $result['destination'] ?? null,
+                'resend_in' => $result['resend_in'] ?? 0,
+                'expires_in' => $result['expires_in'] ?? 0,
+            ], $code);
+            break;
+
+        case 'teacher_register_verify_otp':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->teacherVerifyRegisterOtp(
+                $payload['email'] ?? '',
+                $payload['otp'] ?? ''
+            );
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], [
+                'attempts_left' => $result['attempts_left'] ?? null,
+            ], $code);
             break;
 
         case 'unified_login':
@@ -97,17 +133,21 @@ try {
                 throw new Exception('Method not supported.');
             }
 
-            $identifier = trim((string)($payload['identifier'] ?? ''));
+            $identifier = trim((string)($payload['identifier'] ?? $payload['email'] ?? ''));
             $password = (string)($payload['password'] ?? '');
 
             if ($identifier === '' || $password === '') {
-                sendJsonResponse('error', 'Email/Student ID and password are required.', null, 422);
+                sendJsonResponse('error', 'Email and password are required.', null, 422);
             }
 
-            if (filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
-                $result = $auth->teacherLogin($identifier, $password);
-                $code = ($result['status'] === 'success') ? 200 : 401;
-                sendJsonResponse($result['status'], $result['message'], ['teacher' => $result['teacher'] ?? null], $code);
+            if (!filter_var($identifier, FILTER_VALIDATE_EMAIL)) {
+                sendJsonResponse('error', 'Please enter a valid email address.', null, 422);
+            }
+
+            // Try teacher login first (wmsu.edu.ph), then student
+            $result = $auth->teacherLogin($identifier, $password);
+            if ($result['status'] === 'success') {
+                sendJsonResponse('success', $result['message'], ['teacher' => $result['teacher'] ?? null], 200);
             }
 
             $result = $auth->studentLogin($identifier, $password);
@@ -120,7 +160,18 @@ try {
                 throw new Exception('Method not supported.');
             }
 
-            $result = $auth->studentLogin($payload['student_id'] ?? '', $payload['password'] ?? '');
+            $email = trim((string)($payload['email'] ?? $payload['identifier'] ?? ''));
+            $password = (string)($payload['password'] ?? '');
+
+            if ($email === '' || $password === '') {
+                sendJsonResponse('error', 'Email and password are required.', null, 422);
+            }
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                sendJsonResponse('error', 'Please enter a valid email address.', null, 422);
+            }
+
+            $result = $auth->studentLogin($email, $password);
             $code = ($result['status'] === 'success') ? 200 : 401;
             sendJsonResponse($result['status'], $result['message'], ['student' => $result['student'] ?? null], $code);
             break;
@@ -130,7 +181,18 @@ try {
                 throw new Exception('Method not supported.');
             }
 
-            $result = $auth->teacherLogin($payload['email'] ?? '', $payload['password'] ?? '');
+            $email = trim((string)($payload['email'] ?? $payload['identifier'] ?? ''));
+            $password = (string)($payload['password'] ?? '');
+
+            if ($email === '' || $password === '') {
+                sendJsonResponse('error', 'Email and password are required.', null, 422);
+            }
+
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
+                sendJsonResponse('error', 'Please enter a valid email address.', null, 422);
+            }
+
+            $result = $auth->teacherLogin($email, $password);
             $code = ($result['status'] === 'success') ? 200 : 401;
             sendJsonResponse($result['status'], $result['message'], ['teacher' => $result['teacher'] ?? null], $code);
             break;
@@ -150,13 +212,42 @@ try {
             sendJsonResponse($result['status'], $result['message'], null, $code);
             break;
 
+        case 'teacher_reset_send_otp':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->teacherSendResetOtp($payload['email'] ?? '');
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], [
+                'destination' => $result['destination'] ?? null,
+                'resend_in' => $result['resend_in'] ?? 0,
+                'expires_in' => $result['expires_in'] ?? 0,
+            ], $code);
+            break;
+
+        case 'teacher_reset_verify_otp':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->teacherVerifyResetOtp(
+                $payload['email'] ?? '',
+                $payload['otp'] ?? ''
+            );
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], [
+                'attempts_left' => $result['attempts_left'] ?? null,
+            ], $code);
+            break;
+
         case 'student_reset_password':
             if ($method !== 'POST') {
                 throw new Exception('Method not supported.');
             }
 
             $result = $auth->studentResetPassword(
-                $payload['student_id'] ?? '',
+                $payload['email'] ?? '',
                 $payload['parent_email'] ?? '',
                 $payload['password'] ?? '',
                 $payload['password_confirmation'] ?? ''
@@ -164,6 +255,39 @@ try {
 
             $code = ($result['status'] === 'success') ? 200 : 422;
             sendJsonResponse($result['status'], $result['message'], null, $code);
+            break;
+
+        case 'student_reset_send_otp':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->studentSendResetOtp(
+                $payload['email'] ?? '',
+                $payload['parent_email'] ?? ''
+            );
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], [
+                'destination' => $result['destination'] ?? null,
+                'resend_in' => $result['resend_in'] ?? 0,
+                'expires_in' => $result['expires_in'] ?? 0,
+            ], $code);
+            break;
+
+        case 'student_reset_verify_otp':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->studentVerifyResetOtp(
+                $payload['email'] ?? '',
+                $payload['parent_email'] ?? '',
+                $payload['otp'] ?? ''
+            );
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], [
+                'attempts_left' => $result['attempts_left'] ?? null,
+            ], $code);
             break;
 
         case 'current_teacher':
@@ -197,6 +321,32 @@ try {
                 'isTeacherLoggedIn' => $auth->isTeacherLoggedIn(),
                 'isStudentLoggedIn' => $auth->isStudentLoggedIn(),
             ]);
+            break;
+
+        case 'socket_identity':
+            if ($method !== 'GET') {
+                throw new Exception('Method not supported.');
+            }
+
+            if ($auth->isTeacherLoggedIn()) {
+                sendJsonResponse('success', 'Socket identity fetched.', [
+                    'user' => [
+                        'type' => 'teacher',
+                        'id' => (int)$auth->getTeacherSessionId(),
+                    ],
+                ], 200);
+            }
+
+            if ($auth->isStudentLoggedIn()) {
+                sendJsonResponse('success', 'Socket identity fetched.', [
+                    'user' => [
+                        'type' => 'student',
+                        'id' => (int)$auth->getStudentSessionId(),
+                    ],
+                ], 200);
+            }
+
+            sendJsonResponse('error', 'Unauthorized', null, 401);
             break;
 
         case 'logout':

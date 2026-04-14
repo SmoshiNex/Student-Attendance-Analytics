@@ -125,30 +125,8 @@ try {
         }
 
         $studentPkId = $auth->getStudentSessionId();
-        $historyQuery = "SELECT ar.id, ar.status, ar.checked_in_at,
-                                DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%M %d, %Y %h:%i %p') AS checked_in_at_formatted,
-                                COALESCE(
-                                    NULLIF(c.class_name, ''),
-                                    CASE
-                                        WHEN c.class_code <> '' AND c.subject_name <> ''
-                                            THEN CONCAT(c.class_code, ' - ', c.subject_name)
-                                        WHEN c.subject_name <> '' THEN c.subject_name
-                                        WHEN c.class_code  <> '' THEN c.class_code
-                                        ELSE 'Unknown Class'
-                                    END
-                                ) AS class_name,
-                                c.subject_name,
-                                c.class_code,
-                                CONCAT(t.first_name, ' ', t.last_name) AS teacher_name
-                         FROM attendance_records ar
-                         INNER JOIN attendance_sessions s ON s.id = ar.attendance_session_id
-                         INNER JOIN teacher_classes c ON c.id = s.teacher_class_id
-                         INNER JOIN teachers t ON t.id = c.teacher_id
-                         WHERE ar.student_id = :student_id
-                         ORDER BY COALESCE(ar.checked_in_at, ar.created_at) DESC";
-        $historyStmt = $db->prepare($historyQuery);
-        $historyStmt->execute([':student_id' => $studentPkId]);
-        sendJsonResponse('success', 'History fetched.', ['records' => $historyStmt->fetchAll(PDO::FETCH_ASSOC)]);
+        $result = $attendance->getStudentHistory($studentPkId);
+        sendJsonResponse('success', 'History fetched.', ['records' => $result['records'] ?? []]);
     }
 
     if ($action === 'student_analytics') {

@@ -4,36 +4,35 @@ import { Button } from "@/components/ui/button"
 import { UserPlus } from "lucide-react"
 import axios from "axios"
 import PasswordInput from "@/Components/ui/PasswordInput"
-import { ErrorModal } from "@/Components/ui/AppModals"
 import logoUrl from "@/lib/logo"
 import { authApiUrl } from "@/lib/nativeApi"
 import { Link, useNavigate } from "react-router-dom"
 
 export default function LoginModal() {
   const navigate = useNavigate()
-  const [identifierError, setIdentifierError] = useState("")
+  const [emailError, setEmailError] = useState("")
   const [loginData, setLoginData] = useState({
-    identifier: "",
+    email: "",
     password: "",
   })
   const [loginProcessing, setLoginProcessing] = useState(false)
   const [loginErrors, setLoginErrors] = useState({})
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
+  const [loginError, setLoginError] = useState("")
 
-  const validateIdentifier = (identifier) => {
-    const value = (identifier || "").trim()
+  const validateEmail = (email) => {
+    const value = (email || "").trim()
     if (!value) {
-      setIdentifierError("Email or Student ID is required.")
+      setEmailError("Registered email is required.")
       return false
     }
+
     const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(value)
-    if (isEmail && !/@wmsu\.edu\.ph$/i.test(value)) {
-      setIdentifierError(
-        "Only official @wmsu.edu.ph emails are allowed for teachers.",
-      )
+    if (!isEmail) {
+      setEmailError("Please enter a valid email address.")
       return false
     }
-    setIdentifierError("")
+
+    setEmailError("")
     return true
   }
 
@@ -42,33 +41,42 @@ export default function LoginModal() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
-    if (!validateIdentifier(loginData.identifier)) return
+    if (!validateEmail(loginData.email)) return
+
+    const loginPayload = {
+      email: loginData.email.trim(),
+      password: loginData.password,
+    }
+
     setLoginProcessing(true)
     setLoginErrors({})
+    setLoginError("")
     try {
       const response = await axios.post(
         authApiUrl("unified_login"),
-        loginData,
-        { withCredentials: true },
+        loginPayload,
+        {
+          withCredentials: true,
+        },
       )
-      const payload = response?.data || {}
-      if (payload?.student?.student_id) {
-        window.__nativeStudentId = payload.student.student_id
+      const responsePayload = response?.data || {}
+      if (responsePayload?.student?.student_id) {
+        window.__nativeStudentId = responsePayload.student.student_id
         window.localStorage.setItem(
           "nativeStudentId",
-          payload.student.student_id,
+          responsePayload.student.student_id,
         )
         navigate("/student/dashboard")
-      } else if (payload?.teacher) {
+      } else if (responsePayload?.teacher) {
         navigate("/teacher/dashboard")
       } else {
         window.location.reload()
       }
     } catch (error) {
-      const message =
+      setLoginError(
         error?.response?.data?.message ||
-        "Unable to log in. Please check your credentials."
-      setErrorModal({ open: true, message })
+          "Unable to log in. Please check your credentials.",
+      )
     } finally {
       setLoginProcessing(false)
     }
@@ -96,23 +104,22 @@ export default function LoginModal() {
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-1">
             <Input
-              type="text"
-              placeholder="Student ID or Teacher Email (@wmsu.edu.ph)"
-              value={loginData.identifier}
+              type="email"
+              placeholder="Registered email address"
+              value={loginData.email}
               onChange={(e) => {
                 const v = e.target.value
-                updateLoginData("identifier", v)
-                if (v.includes("@")) validateIdentifier(v)
-                else setIdentifierError("")
+                updateLoginData("email", v)
+                if (v.trim()) validateEmail(v)
+                else setEmailError("")
                 if (loginErrors.message) setLoginErrors({})
               }}
-              onBlur={(e) => validateIdentifier(e.target.value)}
+              onBlur={(e) => validateEmail(e.target.value)}
               className="h-11 border-gray-200 focus:border-black focus:ring-black rounded-lg"
-              required
             />
-            {(identifierError || loginErrors.identifier) && (
+            {(emailError || loginErrors.email) && (
               <p className="text-xs text-red-600 font-medium ml-1">
-                {identifierError || loginErrors.identifier}
+                {emailError || loginErrors.email}
               </p>
             )}
           </div>
@@ -123,10 +130,10 @@ export default function LoginModal() {
               onChange={(e) => {
                 updateLoginData("password", e.target.value)
                 if (loginErrors.message) setLoginErrors({})
+                if (loginError) setLoginError("")
               }}
               placeholder="Password"
               className="h-11 border-gray-200 focus:border-black focus:ring-black rounded-lg"
-              required
             />
             {loginErrors.password && (
               <p className="text-xs text-red-600 font-medium ml-1">
@@ -134,6 +141,12 @@ export default function LoginModal() {
               </p>
             )}
           </div>
+
+          {loginError && (
+            <p className="text-xs text-red-600 font-medium ml-1">
+              {loginError}
+            </p>
+          )}
 
           <div className="flex justify-end pt-1">
             <Link
@@ -163,13 +176,6 @@ export default function LoginModal() {
           </div>
         </form>
       </div>
-
-      <ErrorModal
-        open={errorModal.open}
-        title="Login Failed"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
-      />
     </div>
   )
 }

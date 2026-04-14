@@ -41,62 +41,17 @@ class StudentChatbot
             ];
         }
 
-        $studentAnalyticsContext = $this->buildStudentAnalyticsContext($studentPkId);
+        $studentAnalyticsContext = $this->buildStudentAnalyticsContext($studentPkId, $message);
 
-        $provider = strtolower(trim((string)$this->readEnvValue('CHATBOT_PROVIDER', 'auto')));
-        if ($provider === '') {
-            $provider = 'auto';
+        $geminiResult = $this->generateWithGemini($studentContext, $studentAnalyticsContext, $history, $message);
+        if ($geminiResult['status'] === 'success') {
+            return [
+                'status' => 'success',
+                'reply' => $this->sanitizeAssistantReply((string)($geminiResult['reply'] ?? '')),
+            ];
         }
 
-        $errors = [];
-
-        if ($provider === 'ollama' || $provider === 'auto') {
-            $ollamaResult = $this->generateWithOllama($studentContext, $studentAnalyticsContext, $history, $message);
-            if ($ollamaResult['status'] === 'success') {
-                return [
-                    'status' => 'success',
-                    'reply' => $this->sanitizeAssistantReply((string)($ollamaResult['reply'] ?? '')),
-                ];
-            }
-
-            $errors[] = 'Local AI: ' . (string)($ollamaResult['message'] ?? 'Ollama is unavailable.');
-
-            if ($provider === 'ollama') {
-                return [
-                    'status' => 'success',
-                    'reply' => $this->sanitizeAssistantReply($this->buildLimitedModeReply(
-                        $studentPkId,
-                        $message,
-                        (string)($ollamaResult['message'] ?? 'Ollama is unavailable.')
-                    )),
-                ];
-            }
-        }
-
-        if ($provider === 'gemini' || $provider === 'auto') {
-            $geminiResult = $this->generateWithGemini($studentContext, $studentAnalyticsContext, $history, $message);
-            if ($geminiResult['status'] === 'success') {
-                return [
-                    'status' => 'success',
-                    'reply' => $this->sanitizeAssistantReply((string)($geminiResult['reply'] ?? '')),
-                ];
-            }
-
-            $errors[] = 'Gemini: ' . (string)($geminiResult['message'] ?? 'Gemini is unavailable.');
-
-            if ($provider === 'gemini') {
-                return [
-                    'status' => 'success',
-                    'reply' => $this->sanitizeAssistantReply($this->buildLimitedModeReply(
-                        $studentPkId,
-                        $message,
-                        (string)($geminiResult['message'] ?? 'Gemini is unavailable.')
-                    )),
-                ];
-            }
-        }
-
-        $reason = !empty($errors) ? $errors[0] : 'No AI provider is currently available.';
+        $reason = (string)($geminiResult['message'] ?? 'Gemini is unavailable.');
         return [
             'status' => 'success',
             'reply' => $this->sanitizeAssistantReply($this->buildLimitedModeReply($studentPkId, $message, $reason)),
@@ -355,163 +310,150 @@ class StudentChatbot
         return (int)($row['unread_count'] ?? 0);
     }
 
-    private function buildStudentAnalyticsContext($studentPkId)
+    private function buildStudentAnalyticsContext($studentPkId, $message = '')
     {
-        $classes = $this->getEnrolledClasses($studentPkId);
-        $classmatesByClass = $this->getClassmatesByClass($studentPkId);
-        $attendanceSummary = $this->getAttendanceSummary($studentPkId);
-        $attendanceByClass = $this->getAttendanceSummaryByClass($studentPkId);
-        $recentRecords = $this->getRecentAttendanceRecords($studentPkId);
-        $unreadNotifications = $this->getUnreadNotificationCount($studentPkId);
+        $n = strtolower(trim((string)$message));
+        $wantsClasses     = $this->containsAny($n, ['class', 'subject', 'enrolled', 'schedule', 'room', 'instructor', 'teacher']);
+        $wantsClassmates  = $this->containsAny($n, ['classmate', 'roster', 'who is in']);
+        $wantsAttendance  = $this->containsAny($n, ['attendance', 'present', 'late', 'absent', 'rate', 'analytics', 'performance', 'recent', 'timeline']);
+        $wantsNotif       = $this->containsAny($n, ['notification', 'unread']);
+        $wantsAll         = !$wantsClasses && !$wantsClassmates && !$wantsAttendance && !$wantsNotif;
 
-        $lines = [
-            'Live student analytics context (authoritative; do not fabricate values):',
-            '- Unread notifications: ' . $unreadNotifications,
-        ];
+        $classes           = ($wantsClasses || $wantsClassmates || $wantsAll) ? $this->getEnrolledClasses($studentPkId) : [];
+        $classmatesByClass = ($wantsClassmates || $wantsAll) ? $this->getClassmatesByClass($studentPkId) : [];
+        $attendanceSummary = ($wantsAttendance || $wantsAll) ? $this->getAttendanceSummary($studentPkId) : ['total' => 0, 'present' => 0, 'late' => 0, 'absent' => 0];
+        $attendanceByClass = ($wantsAttendance || $wantsAll) ? $this->getAttendanceSummaryByClass($studentPkId) : [];
+        $recentRecords     = ($wantsAttendance || $wantsAll) ? $this->getRecentAttendanceRecords($studentPkId) : [];
+        $unreadCount       = ($wantsNotif || $wantsAll) ? $this->getUnreadNotificationCount($studentPkId) : null;
+
+        $lines = ['Live student analytics context (authoritative; do not fabricate values):'];
+
+        if ($unreadCount !== null) {
+            $lines[] = '- Unread notifications: ' . $unreadCount;
+        }
 
         $totalClasses = count($classes);
-        $classRows = array_slice($classes, 0, 12);
+        $classRows = array_slice($classes, 0, 10);
 
-        if ($totalClasses <= 0) {
-            $lines[] = '- Enrolled classes: none found.';
-        } else {
-            $lines[] = '- Enrolled classes (' . $totalClasses . ' total):';
-
-            foreach ($classRows as $classItem) {
-                $label = $this->formatClassLabel(
-                    (string)($classItem['class_code'] ?? ''),
-                    (string)($classItem['subject_name'] ?? ''),
-                    (string)($classItem['class_name'] ?? '')
-                );
-
-                $meta = [];
-                $schedule = trim((string)($classItem['schedule'] ?? ''));
-                $room = trim((string)($classItem['room'] ?? ''));
-                $teacher = trim((string)($classItem['teacher_name'] ?? ''));
-
-                if ($schedule !== '') {
-                    $meta[] = 'Schedule: ' . $schedule;
+        if ($wantsClasses || $wantsAll) {
+            if ($totalClasses <= 0) {
+                $lines[] = '- Enrolled classes: none found.';
+            } else {
+                $lines[] = '- Enrolled classes (' . $totalClasses . ' total):';
+                foreach ($classRows as $classItem) {
+                    $label = $this->formatClassLabel(
+                        (string)($classItem['class_code'] ?? ''),
+                        (string)($classItem['subject_name'] ?? ''),
+                        (string)($classItem['class_name'] ?? '')
+                    );
+                    $meta = [];
+                    $schedule = trim((string)($classItem['schedule'] ?? ''));
+                    $room = trim((string)($classItem['room'] ?? ''));
+                    $teacher = trim((string)($classItem['teacher_name'] ?? ''));
+                    if ($schedule !== '') $meta[] = 'Schedule: ' . $schedule;
+                    if ($room !== '') $meta[] = 'Room: ' . $room;
+                    if ($teacher !== '') $meta[] = 'Instructor: ' . $teacher;
+                    $line = '  - ' . $label;
+                    if (!empty($meta)) $line .= ' (' . implode(' | ', $meta) . ')';
+                    $lines[] = $line;
                 }
-                if ($room !== '') {
-                    $meta[] = 'Room: ' . $room;
+                if ($totalClasses > count($classRows)) {
+                    $lines[] = '  - ... plus ' . ($totalClasses - count($classRows)) . ' more class(es).';
                 }
-                if ($teacher !== '') {
-                    $meta[] = 'Instructor: ' . $teacher;
-                }
-
-                $line = '  - ' . $label;
-                if (!empty($meta)) {
-                    $line .= ' (' . implode(' | ', $meta) . ')';
-                }
-
-                $lines[] = $line;
-            }
-
-            if ($totalClasses > count($classRows)) {
-                $lines[] = '  - ... plus ' . ($totalClasses - count($classRows)) . ' more class(es).';
             }
         }
 
-        $lines[] = '- Classmates by class:';
-        if ($totalClasses <= 0) {
-            $lines[] = '  - No enrolled classes, so no classmates are listed.';
-        } else {
-            foreach ($classRows as $classItem) {
-                $classId = (int)($classItem['id'] ?? 0);
-                $label = $this->formatClassLabel(
-                    (string)($classItem['class_code'] ?? ''),
-                    (string)($classItem['subject_name'] ?? ''),
-                    (string)($classItem['class_name'] ?? '')
-                );
-
-                $classmates = $classId > 0 ? ($classmatesByClass[$classId] ?? []) : [];
-                if (empty($classmates)) {
-                    $lines[] = '  - ' . $label . ': no other classmates found.';
-                    continue;
+        if ($wantsClassmates || $wantsAll) {
+            $lines[] = '- Classmates by class:';
+            if ($totalClasses <= 0) {
+                $lines[] = '  - No enrolled classes, so no classmates are listed.';
+            } else {
+                foreach ($classRows as $classItem) {
+                    $classId = (int)($classItem['id'] ?? 0);
+                    $label = $this->formatClassLabel(
+                        (string)($classItem['class_code'] ?? ''),
+                        (string)($classItem['subject_name'] ?? ''),
+                        (string)($classItem['class_name'] ?? '')
+                    );
+                    $classmates = $classId > 0 ? ($classmatesByClass[$classId] ?? []) : [];
+                    if (empty($classmates)) {
+                        $lines[] = '  - ' . $label . ': no other classmates found.';
+                        continue;
+                    }
+                    $preview = array_slice($classmates, 0, 6);
+                    $names = [];
+                    foreach ($preview as $classmate) {
+                        $names[] = $this->formatStudentDisplayName($classmate);
+                    }
+                    $line = '  - ' . $label . ' (' . count($classmates) . ' classmate(s)): ' . implode(', ', $names);
+                    if (count($classmates) > count($preview)) {
+                        $line .= ', plus ' . (count($classmates) - count($preview)) . ' more';
+                    }
+                    $lines[] = $line;
                 }
-
-                $preview = array_slice($classmates, 0, 8);
-                $names = [];
-                foreach ($preview as $classmate) {
-                    $names[] = $this->formatStudentDisplayName($classmate);
-                }
-
-                $line = '  - ' . $label . ' (' . count($classmates) . ' classmate(s)): ' . implode(', ', $names);
-                if (count($classmates) > count($preview)) {
-                    $line .= ', plus ' . (count($classmates) - count($preview)) . ' more';
-                }
-
-                $lines[] = $line;
             }
         }
 
-        $present = (int)($attendanceSummary['present'] ?? 0);
-        $late = (int)($attendanceSummary['late'] ?? 0);
-        $absent = (int)($attendanceSummary['absent'] ?? 0);
-        $total = (int)($attendanceSummary['total'] ?? 0);
-        $overallRate = $total > 0 ? round((($present + $late) / $total) * 100, 1) : 0;
+        if ($wantsAttendance || $wantsAll) {
+            $present = (int)($attendanceSummary['present'] ?? 0);
+            $late    = (int)($attendanceSummary['late'] ?? 0);
+            $absent  = (int)($attendanceSummary['absent'] ?? 0);
+            $total   = (int)($attendanceSummary['total'] ?? 0);
+            $overallRate = $total > 0 ? round((($present + $late) / $total) * 100, 1) : 0;
 
-        $lines[] = '- Attendance performance overview:';
-        if ($total <= 0) {
-            $lines[] = '  - No attendance records yet.';
-        } else {
-            $lines[] = '  - Overall attendance rate: ' . $overallRate . '%';
-            $lines[] = '  - Present: ' . $present . ', Late: ' . $late . ', Absent: ' . $absent . ', Total: ' . $total;
-        }
-
-        $byClassRows = array_slice($attendanceByClass, 0, 12);
-        $lines[] = '- Attendance analytics by class:';
-        if (empty($byClassRows)) {
-            $lines[] = '  - No class-level attendance analytics yet.';
-        } else {
-            foreach ($byClassRows as $row) {
-                $classTotal = (int)($row['total'] ?? 0);
-                $classPresent = (int)($row['present'] ?? 0);
-                $classLate = (int)($row['late'] ?? 0);
-                $classAbsent = (int)($row['absent'] ?? 0);
-                $classRate = $classTotal > 0 ? round((($classPresent + $classLate) / $classTotal) * 100, 1) : 0;
-
-                $label = $this->formatClassLabel(
-                    (string)($row['class_code'] ?? ''),
-                    (string)($row['subject_name'] ?? ''),
-                    (string)($row['class_name'] ?? '')
-                );
-
-                $lines[] = '  - ' . $label
-                    . ' => rate: ' . $classRate . '%'
-                    . ', present: ' . $classPresent
-                    . ', late: ' . $classLate
-                    . ', absent: ' . $classAbsent
-                    . ', total: ' . $classTotal;
+            $lines[] = '- Attendance performance overview:';
+            if ($total <= 0) {
+                $lines[] = '  - No attendance records yet.';
+            } else {
+                $lines[] = '  - Overall attendance rate: ' . $overallRate . '%';
+                $lines[] = '  - Present: ' . $present . ', Late: ' . $late . ', Absent: ' . $absent . ', Total: ' . $total;
             }
 
-            if (count($attendanceByClass) > count($byClassRows)) {
-                $lines[] = '  - ... plus ' . (count($attendanceByClass) - count($byClassRows)) . ' more class analytics row(s).';
+            $byClassRows = array_slice($attendanceByClass, 0, 8);
+            $lines[] = '- Attendance analytics by class:';
+            if (empty($byClassRows)) {
+                $lines[] = '  - No class-level attendance analytics yet.';
+            } else {
+                foreach ($byClassRows as $row) {
+                    $classTotal   = (int)($row['total'] ?? 0);
+                    $classPresent = (int)($row['present'] ?? 0);
+                    $classLate    = (int)($row['late'] ?? 0);
+                    $classAbsent  = (int)($row['absent'] ?? 0);
+                    $classRate    = $classTotal > 0 ? round((($classPresent + $classLate) / $classTotal) * 100, 1) : 0;
+                    $label = $this->formatClassLabel(
+                        (string)($row['class_code'] ?? ''),
+                        (string)($row['subject_name'] ?? ''),
+                        (string)($row['class_name'] ?? '')
+                    );
+                    $lines[] = '  - ' . $label
+                        . ' => rate: ' . $classRate . '%'
+                        . ', present: ' . $classPresent
+                        . ', late: ' . $classLate
+                        . ', absent: ' . $classAbsent
+                        . ', total: ' . $classTotal;
+                }
+                if (count($attendanceByClass) > count($byClassRows)) {
+                    $lines[] = '  - ... plus ' . (count($attendanceByClass) - count($byClassRows)) . ' more class analytics row(s).';
+                }
             }
-        }
 
-        $recentRows = array_slice($recentRecords, 0, 8);
-        $lines[] = '- Recent attendance timeline:';
-        if (empty($recentRows)) {
-            $lines[] = '  - No recent attendance entries.';
-        } else {
-            foreach ($recentRows as $row) {
-                $label = $this->formatClassLabel(
-                    (string)($row['class_code'] ?? ''),
-                    (string)($row['subject_name'] ?? ''),
-                    (string)($row['class_name'] ?? '')
-                );
-
-                $status = trim((string)($row['status'] ?? 'unknown'));
-                $time = trim((string)($row['checked_in_at'] ?? ''));
-                if ($time === '') {
-                    $time = trim((string)($row['started_at'] ?? ''));
+            $recentRows = array_slice($recentRecords, 0, 5);
+            $lines[] = '- Recent attendance timeline:';
+            if (empty($recentRows)) {
+                $lines[] = '  - No recent attendance entries.';
+            } else {
+                foreach ($recentRows as $row) {
+                    $label = $this->formatClassLabel(
+                        (string)($row['class_code'] ?? ''),
+                        (string)($row['subject_name'] ?? ''),
+                        (string)($row['class_name'] ?? '')
+                    );
+                    $status = trim((string)($row['status'] ?? 'unknown'));
+                    $time = trim((string)($row['checked_in_at'] ?? ''));
+                    if ($time === '') $time = trim((string)($row['started_at'] ?? ''));
+                    if ($time === '') $time = 'N/A';
+                    $lines[] = '  - ' . $time . ' | ' . $label . ' | status: ' . $status;
                 }
-                if ($time === '') {
-                    $time = 'N/A';
-                }
-
-                $lines[] = '  - ' . $time . ' | ' . $label . ' | status: ' . $status;
             }
         }
 
@@ -643,7 +585,7 @@ class StudentChatbot
                   INNER JOIN teacher_classes c ON c.id = s.teacher_class_id
                   WHERE ar.student_id = :student_id
                   ORDER BY COALESCE(ar.checked_in_at, s.started_at) DESC
-                  LIMIT 8";
+                  LIMIT 5";
 
         $stmt = $this->conn->prepare($query);
         $stmt->execute([':student_id' => (int)$studentPkId]);
@@ -677,145 +619,22 @@ class StudentChatbot
         return 'Unnamed class';
     }
 
-    private function generateWithOllama($studentContext, $studentAnalyticsContext, $history, $message)
-    {
-        if (!function_exists('curl_init')) {
-            return [
-                'status' => 'error',
-                'message' => 'cURL is not enabled on the server.',
-            ];
-        }
-
-        $baseUrl = rtrim((string)$this->readEnvValue('OLLAMA_BASE_URL', 'http://127.0.0.1:11434'), '/');
-        $model = trim((string)$this->readEnvValue('OLLAMA_MODEL', 'llama3.2:3b'));
-        if ($model === '') {
-            $model = 'llama3.2:3b';
-        }
-
-        $messages = [
-            [
-                'role' => 'system',
-                'content' => $this->buildSystemInstruction($studentContext, $studentAnalyticsContext),
-            ],
-        ];
-
-        $history = array_slice((array)$history, -10);
-        foreach ($history as $entry) {
-            if (!is_array($entry)) {
-                continue;
-            }
-
-            $role = strtolower(trim((string)($entry['role'] ?? '')));
-            $text = trim((string)($entry['content'] ?? ''));
-            if ($text === '' || !in_array($role, ['user', 'assistant'], true)) {
-                continue;
-            }
-
-            if (strlen($text) > 1200) {
-                $text = substr($text, 0, 1200);
-            }
-
-            $messages[] = [
-                'role' => $role === 'assistant' ? 'assistant' : 'user',
-                'content' => $text,
-            ];
-        }
-
-        if (strlen($message) > 2000) {
-            $message = substr($message, 0, 2000);
-        }
-
-        $messages[] = [
-            'role' => 'user',
-            'content' => $message,
-        ];
-
-        $payload = [
-            'model' => $model,
-            'messages' => $messages,
-            'stream' => false,
-            'options' => [
-                'temperature' => 0.3,
-            ],
-        ];
-
-        $json = json_encode($payload, JSON_UNESCAPED_SLASHES);
-        if ($json === false) {
-            return [
-                'status' => 'error',
-                'message' => 'Failed to encode Ollama request payload.',
-            ];
-        }
-
-        $url = $baseUrl . '/api/chat';
-        $ch = curl_init($url);
-        curl_setopt_array($ch, [
-            CURLOPT_RETURNTRANSFER => true,
-            CURLOPT_POST => true,
-            CURLOPT_HTTPHEADER => [
-                'Content-Type: application/json',
-            ],
-            CURLOPT_POSTFIELDS => $json,
-            CURLOPT_CONNECTTIMEOUT => 8,
-            CURLOPT_TIMEOUT => 60,
-        ]);
-
-        $responseBody = curl_exec($ch);
-        $curlError = curl_error($ch);
-        $httpCode = (int)curl_getinfo($ch, CURLINFO_HTTP_CODE);
-        curl_close($ch);
-
-        if ($responseBody === false) {
-            return [
-                'status' => 'error',
-                'message' => 'Could not reach Ollama at ' . $baseUrl . '. Start Ollama and ensure the server is running.',
-            ];
-        }
-
-        $decoded = json_decode($responseBody, true);
-        if (!is_array($decoded)) {
-            return [
-                'status' => 'error',
-                'message' => 'Ollama returned an invalid response.',
-            ];
-        }
-
-        if ($httpCode >= 400) {
-            $errorMessage = trim((string)($decoded['error'] ?? $decoded['message'] ?? 'Ollama request failed.'));
-            $lower = strtolower($errorMessage);
-            if (strpos($lower, 'model') !== false && strpos($lower, 'not found') !== false) {
-                $errorMessage = 'Ollama model not found. Run: ollama pull ' . $model;
-            }
-
-            return [
-                'status' => 'error',
-                'message' => $errorMessage !== '' ? $errorMessage : 'Ollama request failed.',
-            ];
-        }
-
-        $reply = trim((string)($decoded['message']['content'] ?? ''));
-        if ($reply === '') {
-            return [
-                'status' => 'error',
-                'message' => 'Ollama did not return reply text.',
-            ];
-        }
-
-        return [
-            'status' => 'success',
-            'reply' => $reply,
-        ];
-    }
-
     private function generateWithGemini($studentContext, $studentAnalyticsContext, $history, $message)
     {
         $apiKey = trim((string)$this->readEnvValue('GEMINI_API_KEY', ''));
-        $model = trim((string)$this->readEnvValue('GEMINI_MODEL', 'gemini-flash-latest'));
 
         if ($apiKey === '') {
             return [
                 'status' => 'error',
                 'message' => 'GEMINI_API_KEY is missing in .env.',
+            ];
+        }
+
+        $models = $this->buildGeminiModelCandidates();
+        if (empty($models)) {
+            return [
+                'status' => 'error',
+                'message' => 'No Gemini models are configured. Set GEMINI_MODEL or GEMINI_MODEL_FALLBACKS in .env.',
             ];
         }
 
@@ -831,34 +650,117 @@ class StudentChatbot
             'generationConfig' => [
                 'temperature' => 0.3,
                 'topP' => 0.9,
-                'maxOutputTokens' => 512,
+                'maxOutputTokens' => 300,
             ],
         ];
 
-        $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
-            . rawurlencode($model)
-            . ':generateContent';
+        $attemptErrors = [];
 
-        $apiResult = $this->postJson($url, $payload, $apiKey);
-        if ($apiResult['status'] !== 'success') {
-            return [
-                'status' => 'error',
-                'message' => (string)($apiResult['message'] ?? 'Gemini is temporarily unavailable.'),
-            ];
-        }
+        foreach ($models as $index => $model) {
+            $url = 'https://generativelanguage.googleapis.com/v1beta/models/'
+                . rawurlencode($model)
+                . ':generateContent';
 
-        $reply = $this->extractReplyText($apiResult['data']);
-        if ($reply === '') {
-            return [
-                'status' => 'error',
-                'message' => 'Gemini did not return reply text.',
-            ];
+            $apiResult = $this->postJson($url, $payload, $apiKey);
+            if ($apiResult['status'] === 'success') {
+                $reply = $this->extractReplyText($apiResult['data']);
+                if ($reply !== '') {
+                    return [
+                        'status' => 'success',
+                        'reply' => $reply,
+                    ];
+                }
+
+                $attemptErrors[] = $model . ': Gemini did not return reply text.';
+            } else {
+                $attemptErrors[] = $model . ': ' . (string)($apiResult['message'] ?? 'Gemini is temporarily unavailable.');
+            }
+
+            $errorCode = (string)($apiResult['code'] ?? 'service_error');
+            $isRetriable = in_array($errorCode, ['quota_exceeded', 'service_error', 'network_error', 'invalid_response'], true);
+            $hasMoreModels = $index < (count($models) - 1);
+
+            if (!$isRetriable || !$hasMoreModels) {
+                break;
+            }
         }
 
         return [
-            'status' => 'success',
-            'reply' => $reply,
+            'status' => 'error',
+            'message' => !empty($attemptErrors)
+                ? implode(' | ', $attemptErrors)
+                : 'Gemini is temporarily unavailable.',
         ];
+    }
+
+    private function buildGeminiModelCandidates()
+    {
+        $primary = $this->normalizeGeminiModelName(
+            (string)$this->readEnvValue('GEMINI_MODEL', 'gemini-flash-latest')
+        );
+
+        if ($primary === '') {
+            $primary = 'gemini-flash-latest';
+        }
+
+        $rawFallbacks = (string)$this->readEnvValue('GEMINI_MODEL_FALLBACKS', '');
+        $fallbacks = $this->parseCsvEnvList($rawFallbacks);
+
+        $candidates = [$primary];
+        foreach ($fallbacks as $fallback) {
+            $normalized = $this->normalizeGeminiModelName($fallback);
+            if ($normalized !== '') {
+                $candidates[] = $normalized;
+            }
+        }
+
+        $deduped = [];
+        $seen = [];
+        foreach ($candidates as $candidate) {
+            $key = strtolower($candidate);
+            if (isset($seen[$key])) {
+                continue;
+            }
+
+            $seen[$key] = true;
+            $deduped[] = $candidate;
+        }
+
+        return $deduped;
+    }
+
+    private function normalizeGeminiModelName($model)
+    {
+        $normalized = trim((string)$model);
+        if ($normalized === '') {
+            return '';
+        }
+
+        if (stripos($normalized, 'models/') === 0) {
+            $normalized = trim(substr($normalized, 7));
+        }
+
+        return $normalized;
+    }
+
+    private function parseCsvEnvList($raw)
+    {
+        $raw = trim((string)$raw);
+        if ($raw === '') {
+            return [];
+        }
+
+        $parts = explode(',', $raw);
+        $result = [];
+
+        foreach ($parts as $part) {
+            $value = trim((string)$part);
+            if ($value !== '') {
+                $result[] = $value;
+            }
+        }
+
+        return $result;
     }
 
     private function buildContents($history, $currentMessage)
@@ -869,7 +771,7 @@ class StudentChatbot
             $history = [];
         }
 
-        $history = array_slice($history, -10);
+        $history = array_slice($history, -6);
 
         foreach ($history as $entry) {
             if (!is_array($entry)) {
@@ -887,8 +789,8 @@ class StudentChatbot
                 continue;
             }
 
-            if (strlen($text) > 1200) {
-                $text = substr($text, 0, 1200);
+            if (strlen($text) > 600) {
+                $text = substr($text, 0, 600);
             }
 
             $contents[] = [
@@ -899,8 +801,8 @@ class StudentChatbot
             ];
         }
 
-        if (strlen($currentMessage) > 2000) {
-            $currentMessage = substr($currentMessage, 0, 2000);
+        if (strlen($currentMessage) > 800) {
+            $currentMessage = substr($currentMessage, 0, 800);
         }
 
         $contents[] = [
@@ -935,8 +837,6 @@ class StudentChatbot
         $course = trim((string)($studentContext['course'] ?? ''));
         $yearLevel = trim((string)($studentContext['year_level'] ?? ''));
         $section = trim((string)($studentContext['section'] ?? ''));
-        $backendContext = $this->buildBackendContextForPrompt();
-
         $contextLines = [
             'Student profile context (for personalization only):',
             '- Name: ' . ($name !== '' ? $name : 'Student'),
@@ -956,7 +856,7 @@ class StudentChatbot
             'Do not invent attendance records, grades, or account state.',
             'If asked for privileged actions or sensitive data, refuse and suggest contacting the teacher/admin.',
             'Never ask for passwords, OTPs, or secret credentials.',
-            'If the request is unrelated to the portal, academics, and backend project context, reply briefly and steer back to student support topics.',
+            'If the request is unrelated to the portal and academics, reply briefly and steer back to student support topics.',
         ];
 
         $instruction = implode("\n", array_merge($rules, [''], $contextLines));
@@ -965,131 +865,7 @@ class StudentChatbot
             $instruction .= "\n\n" . trim((string)$studentAnalyticsContext);
         }
 
-        if ($backendContext !== '') {
-            $instruction .= "\n\nBackend project context for code-aware answers:\n";
-            $instruction .= $backendContext;
-        }
-
         return $instruction;
-    }
-
-    private function buildBackendContextForPrompt()
-    {
-        if (!$this->isEnvEnabled('CHATBOT_INCLUDE_BACKEND_CONTEXT', false)) {
-            return '';
-        }
-
-        $backendRoot = realpath(__DIR__ . '/..');
-        if ($backendRoot === false || !is_dir($backendRoot)) {
-            return '';
-        }
-
-        $allowedExtensions = ['php', 'sql'];
-        $maxChars = $this->readIntEnvValue('CHATBOT_BACKEND_CONTEXT_MAX_CHARS', 220000, 20000, 500000);
-        $rootWithSlashes = str_replace('\\', '/', $backendRoot);
-
-        $sections = [];
-
-        try {
-            $iterator = new RecursiveIteratorIterator(
-                new RecursiveDirectoryIterator($backendRoot, FilesystemIterator::SKIP_DOTS)
-            );
-
-            foreach ($iterator as $fileInfo) {
-                if (!$fileInfo->isFile()) {
-                    continue;
-                }
-
-                $extension = strtolower((string)$fileInfo->getExtension());
-                if (!in_array($extension, $allowedExtensions, true)) {
-                    continue;
-                }
-
-                $normalizedPath = str_replace('\\', '/', $fileInfo->getPathname());
-                if (strpos($normalizedPath, '/PHPMailer/') !== false) {
-                    continue;
-                }
-
-                $relativePath = ltrim(str_replace($rootWithSlashes, '', $normalizedPath), '/');
-                if ($relativePath === '') {
-                    continue;
-                }
-
-                $content = @file_get_contents($fileInfo->getPathname());
-                if ($content === false || trim($content) === '') {
-                    continue;
-                }
-
-                $projectPath = 'backend/' . $relativePath;
-                $section = "BEGIN FILE: " . $projectPath . "\n"
-                    . $content . "\n"
-                    . "END FILE: " . $projectPath . "\n\n";
-
-                $sections[] = [
-                    'path' => $projectPath,
-                    'section' => $section,
-                ];
-            }
-        } catch (Exception $e) {
-            return '';
-        }
-
-        if (empty($sections)) {
-            return '';
-        }
-
-        usort($sections, function ($a, $b) {
-            return strcmp((string)$a['path'], (string)$b['path']);
-        });
-
-        $context = "Backend file index:\n";
-        foreach ($sections as $item) {
-            $context .= '- ' . $item['path'] . "\n";
-        }
-        $context .= "\nBackend source code:\n";
-
-        $included = 0;
-        $total = count($sections);
-
-        foreach ($sections as $item) {
-            $next = (string)$item['section'];
-            if (strlen($context) + strlen($next) > $maxChars) {
-                break;
-            }
-
-            $context .= $next;
-            $included++;
-        }
-
-        if ($included < $total) {
-            $context .= "[Backend context truncated: included " . $included . " of " . $total . " files due CHATBOT_BACKEND_CONTEXT_MAX_CHARS limit.]\n";
-        }
-
-        return $context;
-    }
-
-    private function isEnvEnabled($key, $default = false)
-    {
-        $fallback = $default ? '1' : '0';
-        $value = strtolower(trim((string)$this->readEnvValue($key, $fallback)));
-
-        return in_array($value, ['1', 'true', 'yes', 'on'], true);
-    }
-
-    private function readIntEnvValue($key, $default, $min, $max)
-    {
-        $raw = (string)$this->readEnvValue($key, (string)$default);
-        $value = (int)$raw;
-
-        if ($value < $min) {
-            return (int)$min;
-        }
-
-        if ($value > $max) {
-            return (int)$max;
-        }
-
-        return $value;
     }
 
     private function postJson($url, $payload, $apiKey = '')

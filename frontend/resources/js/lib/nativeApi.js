@@ -120,6 +120,10 @@ export function chatbotApiUrl(action, query = {}) {
   return buildApiUrl("chatbot_api.php", { action, ...query })
 }
 
+export function messagesApiUrl(action, query = {}) {
+  return buildApiUrl("messages_api.php", { action, ...query })
+}
+
 export function getStoredStudentId() {
   if (typeof window === "undefined") {
     return ""

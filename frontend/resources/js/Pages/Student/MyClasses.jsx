@@ -28,8 +28,8 @@ export default function StudentMyClasses() {
           setClasses(res.data?.classes || [])
         }
       })
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) navigate("/", { replace: true })
       })
       .finally(() => setLoading(false))
   }, [navigate])

@@ -31,8 +31,8 @@ export default function AttendanceHistory() {
       .then((res) => {
         if (res) setRecords(res.data?.records || [])
       })
-      .catch(() => {
-        navigate("/", { replace: true })
+      .catch((err) => {
+        if (err?.response?.status === 401) navigate("/", { replace: true })
       })
       .finally(() => setLoading(false))
   }, [navigate])
