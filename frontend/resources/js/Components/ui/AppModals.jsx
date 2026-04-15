@@ -4,10 +4,10 @@ function Overlay({ onClose, children }) {
   return (
     <>
       <div
-        className="fixed inset-0 bg-black/50 z-[9998] animate-in fade-in-0 duration-200"
+        className="fixed inset-0 bg-black/50 z-[9000] animate-in fade-in-0 duration-200"
         onClick={onClose}
       />
-      <div className="fixed inset-0 flex items-center justify-center z-[9999] p-4 pointer-events-none">
+      <div className="fixed inset-0 flex items-center justify-center z-[9001] p-4 pointer-events-none">
         <div className="pointer-events-auto w-full max-w-sm animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 sm:slide-in-from-top-2 duration-200">
           {children}
         </div>

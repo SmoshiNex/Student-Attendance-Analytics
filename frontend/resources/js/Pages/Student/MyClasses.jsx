@@ -1,4 +1,4 @@
-import { BookOpen, User, Clock, Calendar, Users } from "lucide-react"
+import { BookOpen, User, Clock, Calendar, Users, LogOut } from "lucide-react"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
@@ -9,6 +9,9 @@ export default function StudentMyClasses() {
   const navigate = useNavigate()
   const [classes, setClasses] = useState([])
   const [loading, setLoading] = useState(true)
+  const [confirmId, setConfirmId] = useState(null)
+  const [unenrolling, setUnenrolling] = useState(false)
+  const [unenrollError, setUnenrollError] = useState("")
 
   useEffect(() => {
     axios
@@ -33,6 +36,20 @@ export default function StudentMyClasses() {
       })
       .finally(() => setLoading(false))
   }, [navigate])
+
+  const handleUnenroll = async (classId) => {
+    setUnenrolling(true)
+    setUnenrollError("")
+    try {
+      await axios.delete(teacherClassApiUrl({ action: "unenroll", class_id: classId }), { withCredentials: true })
+      setClasses((prev) => prev.filter((c) => c.id !== classId))
+      setConfirmId(null)
+    } catch (err) {
+      setUnenrollError(err?.response?.data?.message || "Failed to unenroll. Please try again.")
+    } finally {
+      setUnenrolling(false)
+    }
+  }
 
   if (loading) {
     return (
@@ -98,6 +115,37 @@ export default function StudentMyClasses() {
                         <Calendar className="w-4 h-4" />
                         <span>Room: {classItem.room}</span>
                       </div>
+                    )}
+
+                    {confirmId === classItem.id ? (
+                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
+                        <p className="text-sm font-medium text-red-700 mb-2">Are you sure you want to unenroll from this class?</p>
+                        {unenrollError && <p className="text-xs text-red-600 mb-2">{unenrollError}</p>}
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => handleUnenroll(classItem.id)}
+                            disabled={unenrolling}
+                            className="flex-1 py-1.5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
+                          >
+                            {unenrolling ? "Unenrolling..." : "Yes, Unenroll"}
+                          </button>
+                          <button
+                            onClick={() => { setConfirmId(null); setUnenrollError("") }}
+                            disabled={unenrolling}
+                            className="flex-1 py-1.5 text-sm font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
+                          >
+                            Cancel
+                          </button>
+                        </div>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => { setConfirmId(classItem.id); setUnenrollError("") }}
+                        className="mt-4 flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
+                      >
+                        <LogOut className="w-4 h-4" />
+                        Unenroll
+                      </button>
                     )}
 
                     <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">

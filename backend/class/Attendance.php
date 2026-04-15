@@ -300,7 +300,8 @@ class Attendance
                 $className,
                 $checkInTimeFormatted,
                 (int)$student['id'],
-                $teacherId
+                $teacherId,
+                $subjectName
             );
 
             // sendParentNotification already writes email_sent / email_failed logs internally.
@@ -579,6 +580,15 @@ class Attendance
 
     public function getStudentHistory($studentPkId)
     {
+        // ============================================================
+        // STUDENT DASHBOARD — ATTENDANCE RATE CALCULATION
+        // ============================================================
+        // QUERY PURPOSE: Fetches all attendance records for this student
+        //   across all classes. The frontend (Student Dashboard) uses
+        //   this to compute the "Attendance Rate" metric card by dividing
+        //   present+late records by total records × 100.
+        //   Also powers the full Attendance History page.
+        // ============================================================
         $historyQuery = "SELECT ar.id, ar.status, ar.checked_in_at,
                                 DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%M %d, %Y %h:%i %p') AS checked_in_at_formatted,
                                 COALESCE(
@@ -714,10 +724,27 @@ class Attendance
             return ['status' => 'error', 'message' => 'Unauthorized or class not found.'];
         }
 
+        // ============================================================
+        // TEACHER ANALYTICS — OVERVIEW METRICS (Dashboard Stat Cards)
+        // ============================================================
         // SQL FEATURE: CTE AT LEAST 1
         // SQL FEATURE: MULTIPLE JOINS (3 OR MORE TABLES IN 1 QUERY)
         // SQL FEATURE: AGGREGATION SQL (MORE THAN 2 OR 3, 4)
-        // CTE (session_stats): aggregate present/late/absent counts per ended session, then compute overall avg/max/min attendance rate across all sessions for this class
+        //
+        // QUERY PURPOSE: Powers the 7 stat cards on the Teacher Analytics page:
+        //   - "Class Attendance Rate" (avg_attendance_rate)
+        //   - "Sessions Held"         (total_sessions)
+        //   - "Highest Session Rate"  (best_session_rate)
+        //   - "Lowest Session Rate"   (worst_session_rate)
+        //   - "Total Present"         (total_present)
+        //   - "Total Late"            (total_late)
+        //   - "Total Absent"          (total_absent)
+        //
+        // HOW IT WORKS:
+        //   CTE `session_stats` — joins attendance_sessions → class_student → attendance_records
+        //   to count present/late/absent per ended session, then the outer SELECT aggregates
+        //   those per-session rows into class-wide AVG / MAX / MIN / SUM values.
+        // ============================================================
         $overviewQuery = "
             WITH session_stats AS (
                 SELECT
@@ -759,7 +786,18 @@ class Attendance
         $enrolledStmt->execute([':class_id' => $classId]);
         $totalEnrolled = (int)$enrolledStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
 
-        // Fetch each ended session with its present/late/absent counts and attendance rate — used to build the session-by-session trend table
+        // ============================================================
+        // TEACHER ANALYTICS — SESSION-BY-SESSION TREND (Bar+Line Chart)
+        // ============================================================
+        // QUERY PURPOSE: Feeds the "Session-by-Session Trend" ComposedChart
+        //   (bars = Present/Late/Absent counts, line = Attendance Rate %).
+        //   Each row = one ended session with its date label and counts.
+        //
+        // HOW IT WORKS:
+        //   Joins attendance_sessions → class_student → attendance_records,
+        //   groups by session, and computes per-session present/late/absent
+        //   counts + total enrolled so the frontend can calculate the rate.
+        // ============================================================
         $trendQuery = "
             SELECT
                 s.id AS session_id,
@@ -796,7 +834,18 @@ class Attendance
             ];
         }, $trendRows);
 
-        // For each enrolled student, count how many times they were present, late, and absent across all ended sessions in this class using correlated subqueries
+        // ============================================================
+        // TEACHER ANALYTICS — STUDENT ATTENDANCE SUMMARY TABLE
+        // ============================================================
+        // QUERY PURPOSE: Populates the "Student Attendance Summary" table
+        //   showing each student's Present / Late / Absent counts and
+        //   overall Attendance Rate %, plus the "At Risk" flag (rate < 75%).
+        //
+        // HOW IT WORKS:
+        //   Uses three correlated subqueries — one per status — to count
+        //   how many ended sessions each student was present, late, or absent
+        //   in this class. Ordered alphabetically by last name.
+        // ============================================================
         $studentQuery = "
             SELECT
                 s.id,
@@ -862,7 +911,14 @@ class Attendance
             ];
         }, $studentRows);
 
-        // Build a session→student→{status,checked_in_at} lookup for frontend date-filtered student recalculation
+        // ============================================================
+        // TEACHER ANALYTICS — RAW RECORDS LOOKUP (Date Filter Support)
+        // ============================================================
+        // QUERY PURPOSE: Fetches every attendance record for this class so
+        //   the frontend can re-compute student counts when the teacher
+        //   applies a date/time filter without a new API call.
+        //   Result is keyed as records_by_session[session_id][student_id].
+        // ============================================================
         $recordsQuery = "
             SELECT ar.attendance_session_id, ar.student_id, ar.status,
                    DATE_FORMAT(ar.checked_in_at, '%h:%i %p') AS checked_in_at
@@ -913,7 +969,20 @@ class Attendance
 
     public function getStudentAnalytics($studentPkId)
     {
-        // CTE (class_totals): for each class the student is enrolled in, compute total sessions, present/late/absent counts, and attendance rate — then flag at-risk if rate is below 75%
+        // ============================================================
+        // STUDENT ANALYTICS — PER-CLASS STATS (Expandable Class Cards)
+        // ============================================================
+        // QUERY PURPOSE: Powers the "Attendance Per Class" expandable cards
+        //   showing each class's Present / Late / Absent counts,
+        //   Attendance Rate %, and the "At Risk" flag (rate < 75%).
+        //   Also feeds the RadialBarChart (rate per class).
+        //
+        // HOW IT WORKS:
+        //   CTE `class_totals` — joins class_student → teacher_classes →
+        //   teachers → attendance_sessions → attendance_records to aggregate
+        //   per-class stats for this student. The outer SELECT adds the
+        //   at_risk flag using a CASE expression.
+        // ============================================================
         $classStatsQuery = "
             WITH class_totals AS (
                 SELECT
@@ -945,7 +1014,21 @@ class Attendance
         $classStmt->execute([':student_id' => $studentPkId]);
         $classRows = $classStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Aggregate the student's overall attendance stats across all classes — includes a subquery to count total distinct classes enrolled
+        // ============================================================
+        // STUDENT ANALYTICS — OVERALL SUMMARY (Top Stat Cards)
+        // ============================================================
+        // QUERY PURPOSE: Powers the 4 summary stat cards at the top:
+        //   - "My Overall Attendance Rate" (overall_rate)
+        //   - "Enrolled Classes"           (total_classes — subquery)
+        //   - "Times Present"              (total_present)
+        //   - "Times Absent"               (total_absent)
+        //   Also provides total_late and total_sessions_attended.
+        //
+        // HOW IT WORKS:
+        //   Aggregates all attendance_records for this student across
+        //   all ended sessions. A correlated subquery counts distinct
+        //   enrolled classes (class_student table).
+        // ============================================================
         $summaryQuery = "
             SELECT
                 COUNT(DISTINCT ar.attendance_session_id)                          AS total_sessions_attended,
@@ -967,7 +1050,17 @@ class Attendance
         $summaryStmt->execute([':student_id' => $studentPkId, ':student_id2' => $studentPkId]);
         $summary = $summaryStmt->fetch(PDO::FETCH_ASSOC);
 
-        // Group the student's attendance records by month to show how many sessions they attended vs missed each month
+        // ============================================================
+        // STUDENT ANALYTICS — MONTHLY TREND (Bar+Line Chart)
+        // ============================================================
+        // QUERY PURPOSE: Feeds the "Monthly Attendance Trend" ComposedChart
+        //   (bars = Attended/Missed counts, line = monthly Rate %).
+        //   Each row = one calendar month with attended vs absent counts.
+        //
+        // HOW IT WORKS:
+        //   Groups all attendance_records for this student by month using
+        //   DATE_FORMAT, counting attended (present+late) vs absent per month.
+        // ============================================================
         $monthlyQuery = "
             SELECT
                 DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%b %Y') AS month_label,
@@ -985,7 +1078,20 @@ class Attendance
         $monthlyStmt->execute([':student_id' => $studentPkId]);
         $monthlyRows = $monthlyStmt->fetchAll(PDO::FETCH_ASSOC);
 
-        // Per-class session timeline: each ended session for every class the student is enrolled in
+        // ============================================================
+        // STUDENT ANALYTICS — SESSION TIMELINE (Session Log Table)
+        // ============================================================
+        // QUERY PURPOSE: Feeds the "Session Log" table inside each
+        //   expanded class card, showing every ended session with the
+        //   student's check-in time and status (Present/Late/Absent).
+        //   Also used by ClassDetail to build the Session Breakdown chart.
+        //
+        // HOW IT WORKS:
+        //   Joins class_student → teacher_classes → attendance_sessions
+        //   → attendance_records (LEFT JOIN so missing records default to
+        //   'absent'). Results are grouped by class_id in PHP for the
+        //   timeline_by_class lookup the frontend uses.
+        // ============================================================
         $sessionTimelineQuery = "
             SELECT
                 c.id AS class_id,
@@ -1076,7 +1182,12 @@ class Attendance
     {
         $today = date('Y-m-d');
 
-        // Fetch all classes for this teacher to build the dashboard class list
+        // ============================================================
+        // TEACHER DASHBOARD — CLASS LIST
+        // ============================================================
+        // QUERY PURPOSE: Fetches all classes for this teacher to build
+        //   the dashboard class list (TodayClasses component).
+        // ============================================================
         $classQuery = "SELECT id, class_code, class_name, subject_name, schedule, room
                        FROM {$this->classTable}
                        WHERE teacher_id = :teacher_id
@@ -1094,7 +1205,12 @@ class Attendance
         foreach ($classes as $class) {
             $classId = (int)$class['id'];
 
-            // Count how many students are enrolled in this class
+            // ============================================================
+            // TEACHER DASHBOARD — ENROLLED STUDENT COUNT PER CLASS
+            // ============================================================
+            // QUERY PURPOSE: Powers the "Students Enrolled" stat card and
+            //   the "total" field on each class card in TodayClasses.
+            // ============================================================
             $enrolledStmt = $this->conn->prepare(
                 "SELECT COUNT(*) AS cnt FROM {$this->classStudentTable} WHERE teacher_class_id = :cid"
             );
@@ -1102,7 +1218,13 @@ class Attendance
             $enrolled = (int)$enrolledStmt->fetch(PDO::FETCH_ASSOC)['cnt'];
             $totalStudents += $enrolled;
 
-            // Get the most recent session started today for this class, if any
+            // ============================================================
+            // TEACHER DASHBOARD — TODAY'S SESSION LOOKUP
+            // ============================================================
+            // QUERY PURPOSE: Finds the most recent session started today
+            //   for each class — determines whether to show "active",
+            //   "ended", or "No session today" on each class card.
+            // ============================================================
             $sessionStmt = $this->conn->prepare(
                 "SELECT id, duration_minutes, started_at, status
                  FROM {$this->sessionTable}
@@ -1125,7 +1247,13 @@ class Attendance
                 $timeDisplay = date('g:i A', strtotime($session['started_at'])) . ' - ' . $endTime;
                 $status = $session['status'];
 
-                // Count present/late and absent records for this session to display live stats on the dashboard
+                // ============================================================
+                // TEACHER DASHBOARD — LIVE ATTENDANCE COUNTS
+                // ============================================================
+                // QUERY PURPOSE: Powers the "Present Today" and "Absent Today"
+                //   stat cards (StatsGrid) and the present/absent numbers
+                //   shown on each class card in TodayClasses.
+                // ============================================================
                 $countsStmt = $this->conn->prepare(
                     "SELECT
                         SUM(CASE WHEN status IN ('present','late') THEN 1 ELSE 0 END) AS present_count,

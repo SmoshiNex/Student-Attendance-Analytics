@@ -10,6 +10,7 @@ import PasswordStrengthChecklist from "@/Components/ui/PasswordStrengthChecklist
 import { Link, useNavigate, useParams } from "react-router-dom"
 import { getPasswordPolicyError } from "@/utils/passwordPolicy"
 import logoUrl from "@/lib/logo"
+import { toast } from "@/lib/toast"
 
 export default function RegisterClass() {
   const navigate = useNavigate()
@@ -36,6 +37,7 @@ export default function RegisterClass() {
     parent_email: "",
     password: "",
     password_confirmation: "",
+    enrollment_code: "",
   })
 
   useEffect(() => {
@@ -74,6 +76,7 @@ export default function RegisterClass() {
     if (!form.last_name.trim()) e.last_name = "Last name is required."
     if (!form.student_id.trim()) e.student_id = "Student ID is required."
     if (!form.email.trim()) e.email = "Email is required."
+    else if (!/^[^\s@]+@wmsu\.edu\.ph$/i.test(form.email.trim())) e.email = "Please use your WMSU email (@wmsu.edu.ph)."
     setErrors(e)
     return Object.keys(e).length === 0
   }
@@ -100,13 +103,17 @@ export default function RegisterClass() {
     setStep((s) => s - 1)
   }
 
+  const [enrollmentCode, setEnrollmentCode] = useState("")
+
   const handleQuickRegister = async () => {
     setProcessing(true)
     setSubmitError("")
     try {
-      await axios.post(teacherClassApiUrl({ action: "register_student", class_id: classId }), {}, { withCredentials: true })
+      await axios.post(teacherClassApiUrl({ action: "register_student", class_id: classId }), { enrollment_code: enrollmentCode }, { withCredentials: true })
+      toast.success("Enrolled!", `You are now enrolled in ${classItem?.class_code}.`)
       setSuccess(true)
     } catch (err) {
+      toast.error("Enrollment Failed", err?.response?.data?.message || "Failed to enroll. Please try again.")
       setSubmitError(err?.response?.data?.message || "Failed to enroll. Please try again.")
     } finally {
       setProcessing(false)
@@ -130,11 +137,15 @@ export default function RegisterClass() {
     setProcessing(true)
     try {
       await axios.post(teacherClassApiUrl({ action: "register_student", class_id: classId }), form, { withCredentials: true })
+      toast.success("Enrolled!", `You are now enrolled in ${classItem?.class_code}.`)
       setSuccess(true)
     } catch (err) {
       const data = err?.response?.data
       if (data?.errors) setErrors(data.errors)
-      else setSubmitError(data?.message || "Failed to enroll. Please try again.")
+      else {
+        toast.error("Enrollment Failed", data?.message || "Failed to enroll. Please try again.")
+        setSubmitError(data?.message || "Failed to enroll. Please try again.")
+      }
     } finally {
       setProcessing(false)
     }
@@ -202,7 +213,17 @@ export default function RegisterClass() {
           <ClassBanner />
           <div className="bg-gray-50 border border-gray-200 rounded-xl p-4 mb-5">
             <p className="font-semibold text-gray-900">Welcome back, {student.first_name}!</p>
-            <p className="text-sm text-gray-500 mt-1">You are already logged in. Click below to enroll.</p>
+            <p className="text-sm text-gray-500 mt-1">Enter the enrollment code to join this class.</p>
+          </div>
+          <div className="mb-4 space-y-1">
+            <Label htmlFor="quick_enrollment_code">Enrollment Code</Label>
+            <Input
+              id="quick_enrollment_code"
+              placeholder="Enter enrollment code"
+              value={enrollmentCode}
+              onChange={(e) => { setEnrollmentCode(e.target.value); if (submitError) setSubmitError("") }}
+              className="h-11 rounded-xl"
+            />
           </div>
           {submitError && <p className="text-xs text-red-600 font-medium mb-3">{submitError}</p>}
           <Button className="w-full h-12 bg-black hover:bg-gray-800 text-white rounded-xl font-semibold" onClick={handleQuickRegister} disabled={processing}>
@@ -283,6 +304,7 @@ export default function RegisterClass() {
               <div className="space-y-1">
                 <Label htmlFor="email">Student Email</Label>
                 <Input id="email" type="email" placeholder="student@wmsu.edu.ph" value={form.email} onChange={(e) => setField("email", e.target.value)} className="h-11 rounded-xl" />
+                <p className="text-xs text-gray-400">Must be your WMSU email (@wmsu.edu.ph)</p>
                 {errors.email && <p className="text-xs text-red-600">{errors.email}</p>}
               </div>
 
@@ -328,8 +350,8 @@ export default function RegisterClass() {
 
               <div className="space-y-1">
                 <Label htmlFor="parent_email">Parent / Guardian Email</Label>
-                <Input id="parent_email" type="email" placeholder="parent@example.com" value={form.parent_email} onChange={(e) => setField("parent_email", e.target.value)} className="h-11 rounded-xl" />
-                <p className="text-xs text-gray-400">Attendance notifications will be sent here</p>
+                <Input id="parent_email" type="email" placeholder="parent@gmail.com" value={form.parent_email} onChange={(e) => setField("parent_email", e.target.value)} className="h-11 rounded-xl" />
+                <p className="text-xs text-gray-400">Personal email (Gmail, Yahoo, etc.) — attendance notifications will be sent here</p>
                 {errors.parent_email && <p className="text-xs text-red-600">{errors.parent_email}</p>}
               </div>
 
@@ -353,6 +375,18 @@ export default function RegisterClass() {
                 </div>
                 <h2 className="text-xl font-bold text-gray-900">Create Password</h2>
                 <p className="text-sm text-gray-500 mt-1">Set a secure password for your account</p>
+              </div>
+
+              <div className="space-y-1">
+                <Label htmlFor="enrollment_code">Enrollment Code</Label>
+                <Input
+                  id="enrollment_code"
+                  placeholder="Enter the code provided by your teacher"
+                  value={form.enrollment_code}
+                  onChange={(e) => setField("enrollment_code", e.target.value)}
+                  className="h-11 rounded-xl"
+                />
+                {errors.enrollment_code && <p className="text-xs text-red-600">{errors.enrollment_code}</p>}
               </div>
 
               <div className="space-y-1">

@@ -23,6 +23,7 @@ import RegisterClass from "./Pages/Student/RegisterClass"
 import TeacherMessages from "./Pages/Teacher/Messages"
 import StudentMessages from "./Pages/Student/Messages"
 import GlobalLoadingBar from "@/Components/ui/GlobalLoadingBar"
+import { Toaster } from "sileo"
 
 window.APP_BASE = APP_BASE
 
@@ -35,6 +36,7 @@ function App() {
   return (
     <>
       <GlobalLoadingBar />
+      <Toaster position="top-center" theme="light" />
       <HashRouter>
         <Routes>
           <Route path="/" element={<Login />} />

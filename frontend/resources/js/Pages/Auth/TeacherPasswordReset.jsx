@@ -7,7 +7,7 @@ import axios from "axios"
 import { authApiUrl } from "@/lib/nativeApi"
 import PasswordInput from "@/Components/ui/PasswordInput"
 import PasswordStrengthChecklist from "@/Components/ui/PasswordStrengthChecklist"
-import { SuccessModal, ErrorModal } from "@/Components/ui/AppModals"
+import { toast } from "@/lib/toast"
 import { Link, useNavigate } from "react-router-dom"
 import { getPasswordPolicyError } from "@/utils/passwordPolicy"
 import logoUrl from "@/lib/logo"
@@ -27,11 +27,6 @@ export default function TeacherPasswordReset() {
   const [destination, setDestination] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
   const [resendIn, setResendIn] = useState(0)
-  const [successModal, setSuccessModal] = useState({
-    open: false,
-    message: "",
-  })
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
 
   const otpCode = useMemo(() => otpDigits.join(""), [otpDigits])
   const passwordsMatch =
@@ -93,10 +88,11 @@ export default function TeacherPasswordReset() {
         email,
       })
       openStepTwo(response?.data || {})
+      toast.success("OTP Sent", `Code sent to ${response?.data?.destination || email}.`)
     } catch (error) {
-      setErrors({
-        email: error?.response?.data?.message || "Failed to send OTP code.",
-      })
+      const msg = error?.response?.data?.message || "Failed to send OTP code."
+      setErrors({ email: msg })
+      toast.error("Failed to Send OTP", msg)
     } finally {
       setProcessing(false)
     }
@@ -172,15 +168,13 @@ export default function TeacherPasswordReset() {
           otp: otpCode,
         },
       )
-      setStatusMessage(
-        response?.data?.message ||
-          "OTP verified. You can now set a new password.",
-      )
+      setStatusMessage(response?.data?.message || "OTP verified. You can now set a new password.")
+      toast.success("OTP Verified", "You can now set a new password.")
       setStep(3)
     } catch (error) {
-      setErrors({
-        otp: error?.response?.data?.message || "Invalid OTP code.",
-      })
+      const msg = error?.response?.data?.message || "Invalid OTP code."
+      setErrors({ otp: msg })
+      toast.error("Invalid OTP", msg)
     } finally {
       setProcessing(false)
     }
@@ -203,11 +197,12 @@ export default function TeacherPasswordReset() {
       )
       setDestination(response?.data?.destination || data.email)
       setResendIn(Number(response?.data?.resend_in || 60))
+      toast.success("OTP Resent", `A new code was sent to ${response?.data?.destination || data.email}.`)
       resetOtpInput()
     } catch (error) {
-      setErrors({
-        otp: error?.response?.data?.message || "Failed to resend OTP code.",
-      })
+      const msg = error?.response?.data?.message || "Failed to resend OTP code."
+      setErrors({ otp: msg })
+      toast.error("Failed to Resend", msg)
     } finally {
       setProcessing(false)
     }
@@ -239,18 +234,13 @@ export default function TeacherPasswordReset() {
         password: data.password,
         password_confirmation: data.password_confirmation,
       })
-      setSuccessModal({
-        open: true,
-        message: response?.data?.message || "Password reset successfully.",
-      })
+      toast.success("Password Reset!", response?.data?.message || "Password reset successfully.")
       setData({ email: "", password: "", password_confirmation: "" })
       setOtpDigits(["", "", "", "", "", ""])
       setStep(1)
+      navigate("/")
     } catch (error) {
-      setErrorModal({
-        open: true,
-        message: error?.response?.data?.message || "Failed to reset password.",
-      })
+      toast.error("Reset Failed", error?.response?.data?.message || "Failed to reset password.")
     } finally {
       setProcessing(false)
     }
@@ -551,21 +541,6 @@ export default function TeacherPasswordReset() {
         </div>
       </div>
 
-      <SuccessModal
-        open={successModal.open}
-        title="Password Reset!"
-        message={successModal.message}
-        onClose={() => {
-          setSuccessModal({ open: false, message: "" })
-          navigate("/")
-        }}
-      />
-      <ErrorModal
-        open={errorModal.open}
-        title="Reset Failed"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
-      />
     </div>
   )
 }

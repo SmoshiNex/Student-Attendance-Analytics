@@ -77,3 +77,8 @@
     padding-left: 5rem;
   }
 }
+
+/* Keep toast notifications above custom fixed modals. */
+[data-sileo-viewport] {
+  z-index: 20000 !important;
+}

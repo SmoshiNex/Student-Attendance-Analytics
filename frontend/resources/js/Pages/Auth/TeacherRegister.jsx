@@ -7,7 +7,7 @@ import axios from "axios"
 import { authApiUrl } from "@/lib/nativeApi"
 import PasswordInput from "@/Components/ui/PasswordInput"
 import PasswordStrengthChecklist from "@/Components/ui/PasswordStrengthChecklist"
-import { SuccessModal } from "@/Components/ui/AppModals"
+import { toast } from "@/lib/toast"
 import { Link, useNavigate } from "react-router-dom"
 import { getPasswordPolicyError } from "@/utils/passwordPolicy"
 import logoUrl from "@/lib/logo"
@@ -32,7 +32,6 @@ export default function TeacherRegister() {
   const [destination, setDestination] = useState("")
   const [statusMessage, setStatusMessage] = useState("")
   const [resendIn, setResendIn] = useState(0)
-  const [successModal, setSuccessModal] = useState({ open: false, message: "" })
 
   const otpCode = useMemo(() => otpDigits.join(""), [otpDigits])
   const passwordsMatch =
@@ -213,13 +212,14 @@ export default function TeacherRegister() {
         password: data.password,
         password_confirmation: data.password_confirmation,
       })
-      setSuccessModal({ open: true, message: response?.data?.message || "Teacher account created successfully." })
+      toast.success("Account Created!", response?.data?.message || "Teacher account created successfully.")
       setData({ first_name: "", middle_name: "", last_name: "", email: "", department: "", password: "", password_confirmation: "" })
       setOtpDigits(["", "", "", "", "", ""])
       setStep(1)
       setStatusMessage("")
       setDestination("")
       setResendIn(0)
+      navigate("/")
     } catch (error) {
       setSubmitError(error?.response?.data?.message || "Failed to create instructor account.")
     } finally {
@@ -437,12 +437,6 @@ export default function TeacherRegister() {
         </div>
       </div>
 
-      <SuccessModal
-        open={successModal.open}
-        title="Account Created!"
-        message={successModal.message}
-        onClose={() => { setSuccessModal({ open: false, message: "" }); navigate("/") }}
-      />
     </div>
   )
 }

@@ -12,16 +12,31 @@ class TeacherClass
 
     private function validateClassData($data)
     {
-        $classCode = trim((string)($data['class_code'] ?? ''));
-        $className = isset($data['class_name']) ? trim((string)$data['class_name']) : null;
-        $subjectName = trim((string)($data['subject_name'] ?? ''));
-        $schedule = trim((string)($data['schedule'] ?? ''));
-        $room = isset($data['room']) ? trim((string)$data['room']) : null;
+        $classCode      = trim((string)($data['class_code'] ?? ''));
+        $className      = isset($data['class_name']) ? trim((string)$data['class_name']) : null;
+        $subjectName    = trim((string)($data['subject_name'] ?? ''));
+        $schedule       = trim((string)($data['schedule'] ?? ''));
+        $room           = isset($data['room']) ? trim((string)$data['room']) : null;
+        $enrollmentCode = trim((string)($data['enrollment_code'] ?? ''));
 
         if ($classCode === '' || $subjectName === '' || $schedule === '') {
             return [
                 'status' => 'error',
                 'message' => 'class_code, subject_name, and schedule are required.'
+            ];
+        }
+
+        if ($enrollmentCode === '') {
+            return [
+                'status' => 'error',
+                'message' => 'enrollment_code is required.'
+            ];
+        }
+
+        if (strlen($enrollmentCode) > 50) {
+            return [
+                'status' => 'error',
+                'message' => 'enrollment_code must not exceed 50 characters.'
             ];
         }
 
@@ -49,11 +64,12 @@ class TeacherClass
         return [
             'status' => 'success',
             'data' => [
-                'class_code' => $classCode,
-                'class_name' => ($className === '') ? null : $className,
-                'subject_name' => $subjectName,
-                'schedule' => $schedule,
-                'room' => ($room === '') ? null : $room,
+                'class_code'      => $classCode,
+                'class_name'      => ($className === '') ? null : $className,
+                'subject_name'    => $subjectName,
+                'schedule'        => $schedule,
+                'room'            => ($room === '') ? null : $room,
+                'enrollment_code' => $enrollmentCode,
             ]
         ];
     }
@@ -121,6 +137,8 @@ class TeacherClass
             $fieldErrors['email']        = 'Email is required.';
         } elseif (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
             $fieldErrors['email'] = 'Invalid email format.';
+        } elseif (!preg_match('/^[a-zA-Z0-9._%+-]+@wmsu\.edu\.ph$/i', $email)) {
+            $fieldErrors['email'] = 'Please use your WMSU email address (@wmsu.edu.ph).';
         }
         if ($course === '') {
             $fieldErrors['course']       = 'Course is required.';
@@ -173,6 +191,20 @@ class TeacherClass
                 'password' => $password,
             ],
         ];
+    }
+
+    public function unenroll($classId, $studentId)
+    {
+        if (!$this->isStudentEnrolled($classId, $studentId)) {
+            return ['status' => 'error', 'message' => 'You are not enrolled in this class.', 'httpCode' => 422];
+        }
+
+        $stmt = $this->conn->prepare(
+            "DELETE FROM class_student WHERE teacher_class_id = :cid AND student_id = :sid"
+        );
+        $stmt->execute([':cid' => (int)$classId, ':sid' => (int)$studentId]);
+
+        return ['status' => 'success', 'message' => 'Unenrolled successfully.'];
     }
 
     public function listByStudent($studentId)
@@ -264,7 +296,7 @@ class TeacherClass
     public function getPublicClass($classId)
     {
         $stmt = $this->conn->prepare(
-            "SELECT c.id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room,
+            "SELECT c.id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code,
                     t.first_name, t.last_name
              FROM teacher_classes c
              INNER JOIN teachers t ON t.id = c.teacher_id
@@ -282,43 +314,62 @@ class TeacherClass
         }
 
         return [
-            'status' => 'success',
+            'status'  => 'success',
             'message' => 'Class fetched.',
-            'class' => [
-                'id' => $row['id'],
-                'class_code' => $row['class_code'],
-                'class_name' => $row['class_name'],
-                'subject_name' => $row['subject_name'],
-                'schedule' => $row['schedule'],
-                'room' => $row['room'],
+            'class'   => [
+                'id'              => $row['id'],
+                'class_code'      => $row['class_code'],
+                'class_name'      => $row['class_name'],
+                'subject_name'    => $row['subject_name'],
+                'schedule'        => $row['schedule'],
+                'room'            => $row['room'],
+                'enrollment_code' => $row['enrollment_code'],
                 'teacher' => [
                     'first_name' => $row['first_name'],
-                    'last_name' => $row['last_name'],
+                    'last_name'  => $row['last_name'],
                 ],
             ],
         ];
     }
 
-    public function registerLoggedInStudent($classId, $studentId)
+    public function registerLoggedInStudent($classId, $studentId, $enrollmentCode)
     {
+        $codeStmt = $this->conn->prepare("SELECT enrollment_code FROM {$this->table} WHERE id = :id LIMIT 1");
+        $codeStmt->execute([':id' => (int)$classId]);
+        $classRow = $codeStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$classRow) {
+            return ['status' => 'error', 'message' => 'Class not found.', 'httpCode' => 404];
+        }
+
+        if (trim((string)$classRow['enrollment_code']) !== trim((string)$enrollmentCode)) {
+            return ['status' => 'error', 'message' => 'Incorrect enrollment code.', 'errors' => ['enrollment_code' => 'Incorrect enrollment code.'], 'httpCode' => 422];
+        }
+
         if ($this->isStudentEnrolled($classId, $studentId)) {
-            return [
-                'status' => 'error',
-                'message' => 'You are already enrolled in this class.',
-                'httpCode' => 422,
-            ];
+            return ['status' => 'error', 'message' => 'You are already enrolled in this class.', 'httpCode' => 422];
         }
 
         $this->enrollStudent($classId, $studentId);
 
-        return [
-            'status' => 'success',
-            'message' => 'Enrolled successfully.',
-        ];
+        return ['status' => 'success', 'message' => 'Enrolled successfully.'];
     }
 
     public function registerNewStudent($classId, $payload)
     {
+        $enrollmentCode = trim((string)($payload['enrollment_code'] ?? ''));
+        $codeStmt = $this->conn->prepare("SELECT enrollment_code FROM {$this->table} WHERE id = :id LIMIT 1");
+        $codeStmt->execute([':id' => (int)$classId]);
+        $classRow = $codeStmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$classRow) {
+            return ['status' => 'error', 'message' => 'Class not found.', 'httpCode' => 404];
+        }
+
+        if (trim((string)$classRow['enrollment_code']) !== $enrollmentCode) {
+            return ['status' => 'error', 'message' => 'Incorrect enrollment code.', 'errors' => ['enrollment_code' => 'Incorrect enrollment code.'], 'httpCode' => 422];
+        }
+
         $validation = $this->validateStudentRegistrationPayload($payload);
         if ($validation['status'] === 'error') {
             return $validation;
@@ -379,12 +430,12 @@ class TeacherClass
     {
         // SQL FEATURE: SUB QUERY (3 of 3)
         // Fetch all classes for this teacher with the count of enrolled students per class
-        $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.created_at, c.updated_at,
+        $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at,
                          COUNT(cs.student_id) AS students_enrolled
                   FROM {$this->table} c
                   LEFT JOIN class_student cs ON cs.teacher_class_id = c.id
                   WHERE c.teacher_id = :teacher_id
-                  GROUP BY c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.created_at, c.updated_at
+                  GROUP BY c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at
                   ORDER BY c.id DESC";
 
         $stmt = $this->conn->prepare($query);
@@ -399,12 +450,12 @@ class TeacherClass
     public function readOne($classId, $teacherId)
     {
         // Fetch a single class with its enrolled student count — verifies teacher ownership via WHERE clause
-        $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.created_at, c.updated_at,
+        $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at,
                          COUNT(cs.student_id) AS students_enrolled
                   FROM {$this->table} c
                   LEFT JOIN class_student cs ON cs.teacher_class_id = c.id
                   WHERE c.id = :id AND c.teacher_id = :teacher_id
-                  GROUP BY c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.created_at, c.updated_at
+                  GROUP BY c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at
                   LIMIT 1";
 
         $stmt = $this->conn->prepare($query);
@@ -463,17 +514,18 @@ class TeacherClass
         $validData = $validation['data'];
 
         // Insert a new class record for this teacher
-        $query = "INSERT INTO {$this->table} (teacher_id, class_code, class_name, subject_name, schedule, room, created_at, updated_at)
-                  VALUES (:teacher_id, :class_code, :class_name, :subject_name, :schedule, :room, NOW(), NOW())";
+        $query = "INSERT INTO {$this->table} (teacher_id, class_code, class_name, subject_name, schedule, room, enrollment_code, created_at, updated_at)
+                  VALUES (:teacher_id, :class_code, :class_name, :subject_name, :schedule, :room, :enrollment_code, NOW(), NOW())";
 
         $stmt = $this->conn->prepare($query);
         $stmt->execute([
-            ':teacher_id' => (int)$teacherId,
-            ':class_code' => $validData['class_code'],
-            ':class_name' => $validData['class_name'],
-            ':subject_name' => $validData['subject_name'],
-            ':schedule' => $validData['schedule'],
-            ':room' => $validData['room']
+            ':teacher_id'      => (int)$teacherId,
+            ':class_code'      => $validData['class_code'],
+            ':class_name'      => $validData['class_name'],
+            ':subject_name'    => $validData['subject_name'],
+            ':schedule'        => $validData['schedule'],
+            ':room'            => $validData['room'],
+            ':enrollment_code' => $validData['enrollment_code'],
         ]);
 
         return [
@@ -506,18 +558,20 @@ class TeacherClass
                       subject_name = :subject_name,
                       schedule = :schedule,
                       room = :room,
+                      enrollment_code = :enrollment_code,
                       updated_at = NOW()
                   WHERE id = :id AND teacher_id = :teacher_id";
 
         $stmt = $this->conn->prepare($query);
         $stmt->execute([
-            ':class_code' => $validData['class_code'],
-            ':class_name' => $validData['class_name'],
-            ':subject_name' => $validData['subject_name'],
-            ':schedule' => $validData['schedule'],
-            ':room' => $validData['room'],
-            ':id' => (int)$classId,
-            ':teacher_id' => (int)$teacherId
+            ':class_code'      => $validData['class_code'],
+            ':class_name'      => $validData['class_name'],
+            ':subject_name'    => $validData['subject_name'],
+            ':schedule'        => $validData['schedule'],
+            ':room'            => $validData['room'],
+            ':enrollment_code' => $validData['enrollment_code'],
+            ':id'              => (int)$classId,
+            ':teacher_id'      => (int)$teacherId
         ]);
 
         return [

@@ -10,6 +10,7 @@ import {
 } from "@/lib/nativeApi"
 import { useNavigate } from "react-router-dom"
 import Header from "./DashboardUI/Header"
+import { toast } from "@/lib/toast"
 
 export default function StudentDashboard() {
   const navigate = useNavigate()
@@ -23,6 +24,25 @@ export default function StudentDashboard() {
     details: {},
   })
 
+  useEffect(() => {
+    const msg = sessionStorage.getItem("login_toast")
+    if (msg) {
+      sessionStorage.removeItem("login_toast")
+      toast.success("Logged in", msg)
+    }
+  }, [])
+
+  // ============================================================
+  // STUDENT DASHBOARD — API CALLS: current_student + my_classes + student_history
+  // ============================================================
+  // Parallel fetch:
+  //   1. current_student  — Auth::currentStudent() → student profile card
+  //   2. my_classes       — TeacherClass::listByStudent() →
+  //        "Enrolled Classes" metric card (count of classes)
+  //   3. student_history  — Attendance::getStudentHistory() →
+  //        "Attendance Rate" metric card
+  //        (present+late records ÷ total records × 100)
+  // ============================================================
   useEffect(() => {
     Promise.all([
       axios.get(authApiUrl("current_student"), { withCredentials: true }),

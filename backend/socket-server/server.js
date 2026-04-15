@@ -48,7 +48,8 @@ function requireEnv(name, options = {}) {
 
 const SOCKET_PORT = parseInt(process.env.SOCKET_PORT || "3000", 10)
 const LAN_HOST = requireEnv("VITE_LAN_HOST")
-const SOCKET_AUTH_API_URL = requireEnv("SOCKET_AUTH_API_URL")
+const SOCKET_AUTH_API_URL = process.env.SOCKET_AUTH_API_URL
+  || `http://${requireEnv("VITE_LAN_HOST")}/Student%20Attedance%20Analytics/backend/api/auth_api.php`
 const DB_HOST = requireEnv("DB_HOST")
 const DB_USER = requireEnv("DB_USER")
 const DB_PASSWORD = requireEnv("DB_PASSWORD", { allowEmpty: true })

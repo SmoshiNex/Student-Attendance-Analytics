@@ -188,6 +188,21 @@ export default function TeacherMessages() {
     }, { withCredentials: true }).then(() => loadInbox()).catch(console.error)
   }, [teacher, loadInbox])
 
+  // ── auto-open thread from toast ──────────────────────────
+  useEffect(() => {
+    if (!teacher) return
+    const openItem = sessionStorage.getItem("open_thread")
+    if (openItem) {
+      try {
+        const thread = JSON.parse(openItem)
+        setActiveThread(thread)
+        setMobilePanel("chat")
+        loadConversation(thread)
+      } catch (e) {}
+      sessionStorage.removeItem("open_thread")
+    }
+  }, [teacher, loadConversation])
+
   // ── socket events ─────────────────────────────────────────
   useEffect(() => {
     if (!teacher) return

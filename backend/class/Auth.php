@@ -892,65 +892,34 @@ class Auth
         ];
     }
 
-    public function studentSendResetOtp($email, $parentEmail)
+    public function studentSendResetOtp($email)
     {
         $email = trim((string)$email);
-        $parentEmail = trim((string)$parentEmail);
 
-        if ($email === '' || $parentEmail === '') {
-            return [
-                'status' => 'error',
-                'message' => 'Student email and parent email are required.'
-            ];
+        if ($email === '') {
+            return ['status' => 'error', 'message' => 'Email is required.'];
         }
 
         if (!filter_var($email, FILTER_VALIDATE_EMAIL)) {
-            return [
-                'status' => 'error',
-                'message' => 'Please enter a valid student email address.'
-            ];
+            return ['status' => 'error', 'message' => 'Please enter a valid email address.'];
         }
 
-        if (!filter_var($parentEmail, FILTER_VALIDATE_EMAIL)) {
-            return [
-                'status' => 'error',
-                'message' => 'Please enter a valid parent email address.'
-            ];
-        }
-
-        // Fetch student by their email address
-        $query = "SELECT id, first_name, last_name, parent_email
-                  FROM {$this->studentTable}
-                  WHERE email = :email
-                  LIMIT 1";
+        $query = "SELECT id, first_name, last_name FROM {$this->studentTable} WHERE email = :email LIMIT 1";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([':email' => $email]);
         $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$student) {
-            return [
-                'status' => 'error',
-                'message' => 'This email is not registered in our system.'
-            ];
-        }
-
-        $storedParentEmail = trim((string)($student['parent_email'] ?? ''));
-        if ($storedParentEmail === '' || strcasecmp($storedParentEmail, $parentEmail) !== 0) {
-            return [
-                'status' => 'error',
-                'message' => 'The parent email does not match our records.'
-            ];
+            return ['status' => 'error', 'message' => 'This email is not registered in our system.'];
         }
 
         $state = $this->getPasswordResetOtpState('student');
         $now = time();
-        $normalizedParentEmail = $this->normalizeEmail($parentEmail);
         $normalizedEmail = $this->normalizeEmail($email);
 
         if (
             is_array($state)
             && $normalizedEmail === $this->normalizeEmail($state['email'] ?? '')
-            && $normalizedParentEmail === $this->normalizeEmail($state['parent_email'] ?? '')
             && $now < (int)($state['resend_available_at'] ?? 0)
         ) {
             return [
@@ -962,26 +931,16 @@ class Auth
 
         $otpCode = $this->generateSixDigitOtp();
         $studentName = trim((string)($student['first_name'] ?? '') . ' ' . (string)($student['last_name'] ?? ''));
-        $recipientName = $studentName !== '' ? ('Parent of ' . $studentName) : 'Parent/Guardian';
 
-        $sendResult = $this->sendPasswordResetOtpEmail(
-            $parentEmail,
-            $recipientName,
-            $otpCode,
-            'Student Account'
-        );
+        $sendResult = $this->sendPasswordResetOtpEmail($email, $studentName, $otpCode, 'Student Account');
 
         if (!($sendResult['success'] ?? false)) {
-            return [
-                'status' => 'error',
-                'message' => (string)($sendResult['message'] ?? 'Unable to send OTP email right now. Please try again.'),
-            ];
+            return ['status' => 'error', 'message' => (string)($sendResult['message'] ?? 'Unable to send OTP email right now. Please try again.')];
         }
 
         $this->setPasswordResetOtpState('student', [
             'email' => $normalizedEmail,
             'student_pk_id' => (int)$student['id'],
-            'parent_email' => $normalizedParentEmail,
             'otp_hash' => $this->hashOtpCode($otpCode),
             'sent_at' => $now,
             'expires_at' => $now + $this->passwordResetOtpTtl,
@@ -993,61 +952,41 @@ class Auth
 
         return [
             'status' => 'success',
-            'message' => 'We have sent a 6-digit OTP to your parent email address.',
-            'destination' => $this->maskEmailAddress($parentEmail),
+            'message' => 'We have sent a 6-digit OTP to your email address.',
+            'destination' => $this->maskEmailAddress($email),
             'resend_in' => $this->passwordResetOtpCooldown,
             'expires_in' => $this->passwordResetOtpTtl,
         ];
     }
 
-    public function studentVerifyResetOtp($email, $parentEmail, $otp)
+    public function studentVerifyResetOtp($email, $otp)
     {
         $email = trim((string)$email);
-        $parentEmail = trim((string)$parentEmail);
         $otp = preg_replace('/\D+/', '', (string)$otp);
 
-        if ($email === '' || $parentEmail === '' || $otp === '') {
-            return [
-                'status' => 'error',
-                'message' => 'Student email, parent email, and OTP are required.'
-            ];
+        if ($email === '' || $otp === '') {
+            return ['status' => 'error', 'message' => 'Email and OTP are required.'];
         }
 
         if (!preg_match('/^\d{6}$/', $otp)) {
-            return [
-                'status' => 'error',
-                'message' => 'OTP must be a 6-digit code.'
-            ];
+            return ['status' => 'error', 'message' => 'OTP must be a 6-digit code.'];
         }
 
         $state = $this->getPasswordResetOtpState('student');
-        if (
-            !is_array($state)
-            || $this->normalizeEmail($email) !== $this->normalizeEmail($state['email'] ?? '')
-            || $this->normalizeEmail($parentEmail) !== $this->normalizeEmail($state['parent_email'] ?? '')
-        ) {
-            return [
-                'status' => 'error',
-                'message' => 'Please request a new OTP code first.'
-            ];
+        if (!is_array($state) || $this->normalizeEmail($email) !== $this->normalizeEmail($state['email'] ?? '')) {
+            return ['status' => 'error', 'message' => 'Please request a new OTP code first.'];
         }
 
         $now = time();
         if ($now > (int)($state['expires_at'] ?? 0)) {
             $this->clearPasswordResetOtpState('student');
-            return [
-                'status' => 'error',
-                'message' => 'OTP has expired. Please request a new one.'
-            ];
+            return ['status' => 'error', 'message' => 'OTP has expired. Please request a new one.'];
         }
 
         $attempts = (int)($state['attempts'] ?? 0);
         if ($attempts >= $this->passwordResetOtpMaxAttempts) {
             $this->clearPasswordResetOtpState('student');
-            return [
-                'status' => 'error',
-                'message' => 'Too many invalid attempts. Please request a new OTP.'
-            ];
+            return ['status' => 'error', 'message' => 'Too many invalid attempts. Please request a new OTP.'];
         }
 
         $isValidOtp = hash_equals((string)($state['otp_hash'] ?? ''), $this->hashOtpCode($otp));
@@ -1055,21 +994,12 @@ class Auth
             $attempts++;
             $state['attempts'] = $attempts;
             $this->setPasswordResetOtpState('student', $state);
-
             $attemptsLeft = max(0, $this->passwordResetOtpMaxAttempts - $attempts);
             if ($attemptsLeft <= 0) {
                 $this->clearPasswordResetOtpState('student');
-                return [
-                    'status' => 'error',
-                    'message' => 'Too many invalid attempts. Please request a new OTP.'
-                ];
+                return ['status' => 'error', 'message' => 'Too many invalid attempts. Please request a new OTP.'];
             }
-
-            return [
-                'status' => 'error',
-                'message' => 'Invalid OTP code.',
-                'attempts_left' => $attemptsLeft,
-            ];
+            return ['status' => 'error', 'message' => 'Invalid OTP code.', 'attempts_left' => $attemptsLeft];
         }
 
         $state['verified'] = true;
@@ -1077,112 +1007,59 @@ class Auth
         $state['otp_hash'] = '';
         $this->setPasswordResetOtpState('student', $state);
 
-        return [
-            'status' => 'success',
-            'message' => 'OTP verified successfully. You can now reset your password.'
-        ];
+        return ['status' => 'success', 'message' => 'OTP verified successfully. You can now reset your password.'];
     }
 
-    public function studentResetPassword($email, $parentEmail, $password, $passwordConfirmation)
+    public function studentResetPassword($email, $password, $passwordConfirmation)
     {
         $email = trim((string)$email);
-        $parentEmail = trim((string)$parentEmail);
         $password = (string)$password;
         $passwordConfirmation = (string)$passwordConfirmation;
 
-        if ($email === '' || $parentEmail === '' || $password === '' || $passwordConfirmation === '') {
-            return [
-                'status' => 'error',
-                'message' => 'Student email, parent email, password, and password confirmation are required.'
-            ];
-        }
-
-        if (!filter_var($parentEmail, FILTER_VALIDATE_EMAIL)) {
-            return [
-                'status' => 'error',
-                'message' => 'Please enter a valid parent email address.'
-            ];
+        if ($email === '' || $password === '' || $passwordConfirmation === '') {
+            return ['status' => 'error', 'message' => 'Email, password, and password confirmation are required.'];
         }
 
         if ($password !== $passwordConfirmation) {
-            return [
-                'status' => 'error',
-                'message' => 'Password confirmation does not match.'
-            ];
+            return ['status' => 'error', 'message' => 'Password confirmation does not match.'];
         }
 
         $passwordPolicyError = $this->validatePasswordPolicy($password);
         if ($passwordPolicyError !== null) {
-            return [
-                'status' => 'error',
-                'message' => $passwordPolicyError
-            ];
+            return ['status' => 'error', 'message' => $passwordPolicyError];
         }
 
-        // Fetch student by email
-        $query = "SELECT id, parent_email
-                  FROM {$this->studentTable}
-                  WHERE email = :email
-                  LIMIT 1";
+        $query = "SELECT id FROM {$this->studentTable} WHERE email = :email LIMIT 1";
         $stmt = $this->conn->prepare($query);
         $stmt->execute([':email' => $email]);
         $student = $stmt->fetch(PDO::FETCH_ASSOC);
 
         if (!$student) {
-            return [
-                'status' => 'error',
-                'message' => 'This email is not registered in our system.'
-            ];
-        }
-
-        $storedParentEmail = trim((string)($student['parent_email'] ?? ''));
-        if ($storedParentEmail === '' || strcasecmp($storedParentEmail, $parentEmail) !== 0) {
-            return [
-                'status' => 'error',
-                'message' => 'The parent email does not match our records.'
-            ];
+            return ['status' => 'error', 'message' => 'This email is not registered in our system.'];
         }
 
         $otpState = $this->getPasswordResetOtpState('student');
         if (
             !is_array($otpState)
             || $this->normalizeEmail($email) !== $this->normalizeEmail($otpState['email'] ?? '')
-            || $this->normalizeEmail($parentEmail) !== $this->normalizeEmail($otpState['parent_email'] ?? '')
             || (int)($otpState['student_pk_id'] ?? 0) !== (int)$student['id']
             || !($otpState['verified'] ?? false)
         ) {
-            return [
-                'status' => 'error',
-                'message' => 'Please complete OTP verification before resetting your password.'
-            ];
+            return ['status' => 'error', 'message' => 'Please complete OTP verification before resetting your password.'];
         }
 
         $verifiedAt = (int)($otpState['verified_at'] ?? 0);
         if ($verifiedAt <= 0 || time() - $verifiedAt > 900) {
             $this->clearPasswordResetOtpState('student');
-            return [
-                'status' => 'error',
-                'message' => 'OTP verification expired. Please request and verify a new OTP.'
-            ];
+            return ['status' => 'error', 'message' => 'OTP verification expired. Please request and verify a new OTP.'];
         }
 
-        $hashedPassword = password_hash($password, PASSWORD_DEFAULT);
-
-        $updateQuery = "UPDATE {$this->studentTable}
-                        SET password = :password, updated_at = NOW()
-                        WHERE id = :id";
-        $updateStmt = $this->conn->prepare($updateQuery);
-        $updateStmt->execute([
-            ':password' => $hashedPassword,
-            ':id' => (int)$student['id']
-        ]);
+        $this->conn->prepare("UPDATE {$this->studentTable} SET password = :password, updated_at = NOW() WHERE id = :id")
+            ->execute([':password' => password_hash($password, PASSWORD_DEFAULT), ':id' => (int)$student['id']]);
 
         $this->clearPasswordResetOtpState('student');
 
-        return [
-            'status' => 'success',
-            'message' => 'Your password has been reset successfully.'
-        ];
+        return ['status' => 'success', 'message' => 'Your password has been reset successfully.'];
     }
 
     public function currentTeacher()

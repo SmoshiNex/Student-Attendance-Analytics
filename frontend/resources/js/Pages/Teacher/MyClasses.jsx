@@ -8,7 +8,7 @@ import QRCodeModal from "./MyClasses/QRCodeModal"
 import ViewStudentsModal from "./MyClasses/ViewStudentsModal"
 import LiveAttendanceModal from "./MyClassesUI/LiveAttendanceModal"
 import Header from "./DashboardUI/Header"
-import { SuccessModal, ErrorModal } from "@/Components/ui/AppModals"
+import { toast } from "@/lib/toast"
 import axios from "axios"
 import { teacherClassApiUrl } from "@/lib/nativeApi"
 import { useNavigate } from "react-router-dom"
@@ -25,11 +25,6 @@ export default function MyClasses() {
   const [isAttendanceModalOpen, setIsAttendanceModalOpen] = useState(false)
   const [selectedClass, setSelectedClass] = useState(null)
   const [enrolledStudents, setEnrolledStudents] = useState([])
-  const [successModal, setSuccessModal] = useState({
-    open: false,
-    message: "",
-  })
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
 
   const fetchClasses = () => {
     axios
@@ -73,11 +68,10 @@ export default function MyClasses() {
       setIsViewStudentsModalOpen(true)
     } catch (error) {
       console.error("Error fetching students:", error)
-      setErrorModal({
-        open: true,
-        message:
-          error?.response?.data?.message || "Failed to load enrolled students.",
-      })
+      toast.error(
+        "Failed to Load Students",
+        error?.response?.data?.message || "Failed to load enrolled students.",
+      )
     }
   }
 
@@ -92,16 +86,16 @@ export default function MyClasses() {
       setIsDeleteModalOpen(false)
       setSelectedClass(null)
       fetchClasses()
-      setSuccessModal({
-        open: true,
-        message: `${deletingClassCode} has been deleted successfully.`,
-      })
+      toast.success(
+        "Class Deleted",
+        `${deletingClassCode} has been deleted successfully.`,
+      )
     } catch (error) {
       setIsDeleteModalOpen(false)
-      setErrorModal({
-        open: true,
-        message: error?.response?.data?.message || "Failed to delete class.",
-      })
+      toast.error(
+        "Failed to Delete Class",
+        error?.response?.data?.message || "Failed to delete class.",
+      )
     }
   }
 
@@ -194,20 +188,10 @@ export default function MyClasses() {
           setIsAttendanceModalOpen(false)
           setSelectedClass(null)
         }}
+        onSessionEnded={() => {
+          fetchClasses()
+        }}
         classData={selectedClass}
-      />
-
-      <SuccessModal
-        open={successModal.open}
-        title="Action Completed"
-        message={successModal.message}
-        onClose={() => setSuccessModal({ open: false, message: "" })}
-      />
-      <ErrorModal
-        open={errorModal.open}
-        title="Action Failed"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
       />
     </>
   )

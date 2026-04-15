@@ -166,6 +166,21 @@ export default function StudentMessages() {
     }, { withCredentials: true }).then(() => loadInbox()).catch(console.error)
   }, [student, loadInbox])
 
+  // ── auto-open thread from toast ──────────────────────────
+  useEffect(() => {
+    if (!student) return
+    const openItem = sessionStorage.getItem("open_thread")
+    if (openItem) {
+      try {
+        const thread = JSON.parse(openItem)
+        setActiveThread(thread)
+        setMobilePanel("chat")
+        loadConversation(thread)
+      } catch (e) {}
+      sessionStorage.removeItem("open_thread")
+    }
+  }, [student, loadConversation])
+
   // ── socket events ─────────────────────────────────────────
   useEffect(() => {
     if (!student) return

@@ -9,9 +9,14 @@ import { QRCodeSVG } from "qrcode.react"
 import { Clock, Users, UserCheck, UserX, AlertTriangle } from "lucide-react"
 import axios from "axios"
 import { attendanceApiUrl, teacherClassApiUrl } from "@/lib/nativeApi"
-import { SuccessModal, ErrorModal } from "@/Components/ui/AppModals"
+import { toast } from "@/lib/toast"
 
-export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
+export default function LiveAttendanceModal({
+  isOpen,
+  onClose,
+  classData,
+  onSessionEnded,
+}) {
   const [session, setSession] = useState(null)
   const [records, setRecords] = useState([])
   const [stats, setStats] = useState({
@@ -24,14 +29,28 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
   const [loading, setLoading] = useState(false)
   const [endingSession, setEndingSession] = useState(false)
   const [showEndConfirm, setShowEndConfirm] = useState(false)
-  const [successModal, setSuccessModal] = useState({
-    open: false,
-    message: "",
-  })
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
   const [enrolledStudents, setEnrolledStudents] = useState([])
   const isStarting = useRef(false)
   const sessionStartRef = useRef(null) // stores { started_at, duration_minutes } to avoid timer restarts
+
+  const toMs = (value) => {
+    if (!value) return NaN
+    return new Date(String(value).replace(" ", "T")).getTime()
+  }
+
+  const getRemainingSeconds = (timing) => {
+    if (!timing) return 0
+    if (!Number.isFinite(timing.startedAtMs)) return 0
+    if (!Number.isFinite(timing.serverTimeAtStart)) return 0
+    if (!Number.isFinite(timing.browserTimeAtStart)) return 0
+
+    const browserElapsed = Math.max(0, Date.now() - timing.browserTimeAtStart)
+    const serverNowMs = timing.serverTimeAtStart + browserElapsed
+    const deadlineMs = timing.startedAtMs + timing.duration_minutes * 60 * 1000
+
+    // Use ceil so users don't lose a second immediately because of network/processing delay.
+    return Math.max(0, Math.ceil((deadlineMs - serverNowMs) / 1000))
+  }
 
   // Start attendance session
   const startSession = async (duration) => {
@@ -48,21 +67,28 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
       setSession(response.data.session)
       const _serverTime = response.data.server_time
       const _startedAt = response.data.session.started_at
+      const startedAtMs = toMs(_startedAt)
+      const serverTimeAtStart = toMs(_serverTime)
       sessionStartRef.current = {
-        startedAtMs: new Date(_startedAt.replace(" ", "T")).getTime(),
+        startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : Date.now(),
         duration_minutes: response.data.session.duration_minutes,
-        serverTimeAtStart: new Date(_serverTime.replace(" ", "T")).getTime(),
+        serverTimeAtStart: Number.isFinite(serverTimeAtStart)
+          ? serverTimeAtStart
+          : Date.now(),
         browserTimeAtStart: Date.now(),
       }
+      setTimeRemaining(getRemainingSeconds(sessionStartRef.current))
+      toast.success(
+        "Session Started",
+        `Attendance session started for ${response.data.session.duration_minutes} minute(s).`,
+      )
       fetchLiveData(response.data.session.id)
     } catch (error) {
       console.error("Error starting session:", error)
-      setErrorModal({
-        open: true,
-        message:
-          error?.response?.data?.message ||
-          "Failed to start attendance session.",
-      })
+      toast.error(
+        "Failed to Start Session",
+        error?.response?.data?.message || "Failed to start attendance session.",
+      )
     } finally {
       setLoading(false)
       isStarting.current = false
@@ -98,12 +124,17 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
         const serverTime =
           response.data.server_time ?? updatedSession.started_at
         const startedAt = updatedSession.started_at
+        const startedAtMs = toMs(startedAt)
+        const serverTimeAtStart = toMs(serverTime)
         sessionStartRef.current = {
-          startedAtMs: new Date(startedAt.replace(" ", "T")).getTime(),
+          startedAtMs: Number.isFinite(startedAtMs) ? startedAtMs : Date.now(),
           duration_minutes: updatedSession.duration_minutes,
-          serverTimeAtStart: new Date(serverTime.replace(" ", "T")).getTime(),
+          serverTimeAtStart: Number.isFinite(serverTimeAtStart)
+            ? serverTimeAtStart
+            : Date.now(),
           browserTimeAtStart: Date.now(),
         }
+        setTimeRemaining(getRemainingSeconds(sessionStartRef.current))
       }
       if (updatedSession.status === "ended") {
         setTimeRemaining(0)
@@ -146,20 +177,24 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
       }))
       setTimeRemaining(0)
       setShowEndConfirm(false)
-
-      setSuccessModal({
-        open: true,
-        message:
-          absentCount > 0
-            ? `Session ended successfully. ${absentCount} student(s) were marked absent.`
-            : "Session ended successfully.",
-      })
+      toast.success(
+        "Session Ended",
+        absentCount > 0
+          ? `Session ended. ${absentCount} student(s) marked absent.`
+          : "Session ended successfully.",
+      )
+      setSession(null)
+      setRecords([])
+      setStats({ total: 0, present: 0, late: 0, absent: 0 })
+      sessionStartRef.current = null
+      onClose(false)
+      onSessionEnded?.()
     } catch (error) {
       console.error("Error ending session:", error)
-      setErrorModal({
-        open: true,
-        message: error?.response?.data?.message || "Failed to end session.",
-      })
+      toast.error(
+        "Action Failed",
+        error?.response?.data?.message || "Failed to end session.",
+      )
     } finally {
       setEndingSession(false)
     }
@@ -169,21 +204,20 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
   useEffect(() => {
     if (!session) return
 
-    const interval = setInterval(() => {
+    const tick = () => {
       const timing = sessionStartRef.current
       if (!timing) return
 
-      const browserElapsed = Date.now() - timing.browserTimeAtStart
-      const serverNowMs = timing.serverTimeAtStart + browserElapsed
-      const deadlineMs =
-        timing.startedAtMs + timing.duration_minutes * 60 * 1000
-      const diff = Math.max(0, Math.floor((deadlineMs - serverNowMs) / 1000))
+      const diff = getRemainingSeconds(timing)
       setTimeRemaining(diff)
 
       if (diff % 5 === 0 || diff === 0) {
         fetchLiveData(session.id)
       }
-    }, 1000)
+    }
+
+    tick()
+    const interval = setInterval(tick, 1000)
 
     return () => clearInterval(interval)
   }, [session?.id])
@@ -210,8 +244,6 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
       setTimeRemaining(0)
       setShowEndConfirm(false)
       setEndingSession(false)
-      setSuccessModal({ open: false, message: "" })
-      setErrorModal({ open: false, message: "" })
       isStarting.current = false
       sessionStartRef.current = null
     }
@@ -338,11 +370,10 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
                     const input = document.getElementById("duration")
                     const duration = parseInt(input.value) || 15
                     if (duration < 1 || duration > 180) {
-                      setErrorModal({
-                        open: true,
-                        message:
-                          "Please enter a duration between 1 and 180 minutes (3 hours).",
-                      })
+                      toast.warning(
+                        "Invalid Duration",
+                        "Please enter a duration between 1 and 180 minutes.",
+                      )
                       return
                     }
                     startSession(duration)
@@ -580,10 +611,10 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
       {showEndConfirm && (
         <>
           <div
-            className="fixed inset-0 bg-black bg-opacity-50 z-[9999] animate-in fade-in-0 duration-200"
+            className="fixed inset-0 bg-black bg-opacity-50 z-[9000] animate-in fade-in-0 duration-200"
             onClick={() => setShowEndConfirm(false)}
           />
-          <div className="fixed inset-0 flex items-center justify-center z-[10000] pointer-events-none">
+          <div className="fixed inset-0 flex items-center justify-center z-[9001] pointer-events-none">
             <div className="bg-white rounded-2xl p-6 max-w-md w-full mx-4 shadow-2xl pointer-events-auto animate-in fade-in-0 zoom-in-95 slide-in-from-bottom-2 sm:slide-in-from-top-2 duration-200">
               <div className="flex items-center gap-3 mb-4">
                 <div className="w-12 h-12 bg-red-100 rounded-full flex items-center justify-center">
@@ -623,28 +654,6 @@ export default function LiveAttendanceModal({ isOpen, onClose, classData }) {
           </div>
         </>
       )}
-
-      <SuccessModal
-        open={successModal.open}
-        title="Session Ended"
-        message={successModal.message}
-        onClose={() => {
-          setSuccessModal({ open: false, message: "" })
-          setSession(null)
-          setRecords([])
-          setStats({ total: 0, present: 0, late: 0, absent: 0 })
-          sessionStartRef.current = null
-          onClose(true)
-          window.location.reload()
-        }}
-      />
-
-      <ErrorModal
-        open={errorModal.open}
-        title="Action Failed"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
-      />
     </>
   )
 }

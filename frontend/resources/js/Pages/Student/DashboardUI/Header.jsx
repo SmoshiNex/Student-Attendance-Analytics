@@ -2,6 +2,9 @@ import { Button } from "@/Components/ui/button"
 import { ConfirmModal } from "@/Components/ui/AppModals"
 import { authApiUrl } from "@/lib/nativeApi"
 import logoUrl from "@/lib/logo"
+import { toast } from "@/lib/toast"
+import { sileo } from "sileo"
+import { useSocket } from "@/hooks/useSocket"
 import {
   Bell,
   BookOpen,
@@ -120,6 +123,7 @@ const getPersonInitials = (firstName, lastName, fallback = "S") => {
 
 export default function Header({ active = "dashboard" }) {
   const navigate = useNavigate()
+  const socket = useSocket()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [studentProfile, setStudentProfile] = useState(null)
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
@@ -189,6 +193,34 @@ export default function Header({ active = "dashboard" }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!studentProfile || active === "messages") return
+    socket.emit("register", { user_type: "student", user_id: studentProfile.id })
+    const onMessage = (msg) => {
+      const senderName = msg.sender_name || "Your teacher"
+      const preview = msg.attachment_url && !msg.message ? "📎 Attachment" : msg.message?.slice(0, 50) || ""
+      const id = sileo.info({
+        title: `New Message From ${senderName}`,
+        description: preview || "Sent you a message.",
+        button: {
+          title: "Reply",
+          onClick: () => {
+            sileo.dismiss(id)
+            sessionStorage.setItem("open_thread", JSON.stringify({
+              partner_type: msg.sender_type,
+              partner_id: msg.sender_id,
+              partner_name: senderName,
+            }))
+            navigate("/student/messages")
+          },
+        },
+        onDismiss: () => sileo.dismiss(id),
+      })
+    }
+    socket.on("receive_message", onMessage)
+    return () => socket.off("receive_message", onMessage)
+  }, [studentProfile, socket, active])
+
   const handleLogout = async () => {
     if (logoutProcessing) {
       return
@@ -201,6 +233,7 @@ export default function Header({ active = "dashboard" }) {
       setConfirmLogoutOpen(false)
       setLogoutProcessing(false)
       window.localStorage.removeItem("nativeStudentId")
+      sessionStorage.setItem("logout_toast", "1")
       navigate("/", { replace: true })
     }
   }

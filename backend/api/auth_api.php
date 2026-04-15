@@ -241,31 +241,12 @@ try {
             ], $code);
             break;
 
-        case 'student_reset_password':
-            if ($method !== 'POST') {
-                throw new Exception('Method not supported.');
-            }
-
-            $result = $auth->studentResetPassword(
-                $payload['email'] ?? '',
-                $payload['parent_email'] ?? '',
-                $payload['password'] ?? '',
-                $payload['password_confirmation'] ?? ''
-            );
-
-            $code = ($result['status'] === 'success') ? 200 : 422;
-            sendJsonResponse($result['status'], $result['message'], null, $code);
-            break;
-
         case 'student_reset_send_otp':
             if ($method !== 'POST') {
                 throw new Exception('Method not supported.');
             }
 
-            $result = $auth->studentSendResetOtp(
-                $payload['email'] ?? '',
-                $payload['parent_email'] ?? ''
-            );
+            $result = $auth->studentSendResetOtp($payload['email'] ?? '');
             $code = ($result['status'] === 'success') ? 200 : 422;
             sendJsonResponse($result['status'], $result['message'], [
                 'destination' => $result['destination'] ?? null,
@@ -281,13 +262,27 @@ try {
 
             $result = $auth->studentVerifyResetOtp(
                 $payload['email'] ?? '',
-                $payload['parent_email'] ?? '',
                 $payload['otp'] ?? ''
             );
             $code = ($result['status'] === 'success') ? 200 : 422;
             sendJsonResponse($result['status'], $result['message'], [
                 'attempts_left' => $result['attempts_left'] ?? null,
             ], $code);
+            break;
+
+        case 'student_reset_password':
+            if ($method !== 'POST') {
+                throw new Exception('Method not supported.');
+            }
+
+            $result = $auth->studentResetPassword(
+                $payload['email'] ?? '',
+                $payload['password'] ?? '',
+                $payload['password_confirmation'] ?? ''
+            );
+
+            $code = ($result['status'] === 'success') ? 200 : 422;
+            sendJsonResponse($result['status'], $result['message'], null, $code);
             break;
 
         case 'current_teacher':

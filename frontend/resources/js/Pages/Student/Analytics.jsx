@@ -217,6 +217,13 @@ export default function StudentAnalytics() {
   const [error, setError] = useState("")
   const [expandedClassId, setExpandedClassId] = useState(null)
 
+  // ============================================================
+  // STUDENT ANALYTICS — API CALL: student_analytics
+  // ============================================================
+  // Fetches summary, classes, monthly trend, and timeline_by_class
+  // from Attendance::getStudentAnalytics().
+  // Runs once on mount — no filter params needed (all data returned).
+  // ============================================================
   useEffect(() => {
     mountedRef.current = true
     axios.get(attendanceApiUrl("student_analytics"), { withCredentials: true })
@@ -237,18 +244,37 @@ export default function StudentAnalytics() {
 
   const atRiskClasses = allClasses.filter((c) => c.at_risk)
 
+  // ============================================================
+  // STUDENT ANALYTICS — PIE CHART DATA (Overall Status)
+  // ============================================================
+  // Feeds the "Overall Status" PieChart with total present/late/absent
+  // counts across all classes. Sourced from the summary query.
+  // ============================================================
   const pieData = rawSummary ? [
     { name: "Present", value: rawSummary.total_present },
     { name: "Late",    value: rawSummary.total_late },
     { name: "Absent",  value: rawSummary.total_absent },
   ] : []
 
+  // ============================================================
+  // STUDENT ANALYTICS — RADIAL BAR CHART DATA (Rate Per Class)
+  // ============================================================
+  // Feeds the "Attendance Rate Per Class" RadialBarChart.
+  // Each bar = one class, colored green/yellow/red by rate threshold.
+  // ============================================================
   const radialData = allClasses.map((c) => ({
     name: c.class_code,
     rate: c.attendance_rate,
     fill: rateColor(c.attendance_rate),
   }))
 
+  // ============================================================
+  // STUDENT ANALYTICS — MONTHLY TREND CHART DATA
+  // ============================================================
+  // Transforms the monthly array from the DB into Recharts format:
+  // bars for Attended/Missed, line for monthly Rate %.
+  // Displayed in the "Monthly Attendance Trend" ComposedChart.
+  // ============================================================
   const monthlyComposedData = allMonthly.map((m) => {
     const total = m.attended + m.absent
     return {

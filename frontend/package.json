@@ -47,6 +47,7 @@
     "react-hook-form": "^7.65.0",
     "react-router-dom": "^7.9.6",
     "recharts": "^2.15.4",
+    "sileo": "^0.1.5",
     "socket.io-client": "^4.8.3",
     "zod": "^3.25.76"
   }

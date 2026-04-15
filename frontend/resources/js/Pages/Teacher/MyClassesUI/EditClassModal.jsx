@@ -9,9 +9,14 @@ import { Input } from "@/Components/ui/input"
 import { Label } from "@/Components/ui/label"
 import { useEffect, useState } from "react"
 import axios from "axios"
-import { SuccessModal, ErrorModal } from "@/Components/ui/AppModals"
-
+import { RefreshCw } from "lucide-react"
 import { teacherClassApiUrl } from "@/lib/nativeApi"
+import { toast } from "@/lib/toast"
+
+const generateEnrollmentCode = () => {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+  return Array.from({ length: 7 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+}
 
 export default function EditClassModal({ isOpen, onClose, classItem }) {
   const [data, setData] = useState({
@@ -20,11 +25,10 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
     subject_name: "",
     schedule: "",
     room: "",
+    enrollment_code: "",
   })
   const [processing, setProcessing] = useState(false)
   const [errors, setErrors] = useState({})
-  const [successModal, setSuccessModal] = useState(false)
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
 
   // Schedule Builder States
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -68,6 +72,7 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
       subject_name: classItem?.subject_name || "",
       schedule: classItem?.schedule || "",
       room: classItem?.room || "",
+      enrollment_code: classItem?.enrollment_code || "",
     })
     setErrors({})
   }, [classItem])
@@ -85,13 +90,10 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
         withCredentials: true,
       })
       onClose()
-      setSuccessModal(true)
+      toast.success("Class Updated!", "Your class has been updated successfully.")
     } catch (error) {
       onClose()
-      setErrorModal({
-        open: true,
-        message: error?.response?.data?.message || "Failed to update class.",
-      })
+      toast.error("Failed to Update Class", error?.response?.data?.message || "Failed to update class.")
     } finally {
       setProcessing(false)
     }
@@ -100,7 +102,7 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Edit Class</DialogTitle>
           </DialogHeader>
@@ -199,6 +201,31 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
               )}
             </div>
 
+            <div>
+              <Label htmlFor="edit_enrollment_code">Enrollment Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="edit_enrollment_code"
+                  className="font-mono tracking-widest"
+                  value={data.enrollment_code}
+                  onChange={(e) => updateField("enrollment_code", e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => updateField("enrollment_code", generateEnrollmentCode())}
+                  title="Generate new code"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Students enter this code to join your class. You can regenerate or edit it.</p>
+              {errors.enrollment_code && (
+                <p className="text-sm text-red-500">{errors.enrollment_code}</p>
+              )}
+            </div>
+
             <div className="flex justify-end gap-4">
               <Button type="button" variant="outline" onClick={onClose}>
                 Cancel
@@ -210,19 +237,6 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
           </form>
         </DialogContent>
       </Dialog>
-
-      <SuccessModal
-        open={successModal}
-        title="Class Updated!"
-        message="Your class has been updated successfully."
-        onClose={() => setSuccessModal(false)}
-      />
-      <ErrorModal
-        open={errorModal.open}
-        title="Failed to Update Class"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
-      />
     </>
   )
 }

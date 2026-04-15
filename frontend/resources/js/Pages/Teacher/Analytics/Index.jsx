@@ -198,6 +198,13 @@ export default function TeacherAnalytics() {
     return () => { mountedRef.current = false }
   }, [navigate])
 
+  // ============================================================
+  // TEACHER ANALYTICS — API CALL: teacher_analytics
+  // ============================================================
+  // Fetches overview metrics, session trend, student list, and
+  // raw records_by_session from Attendance::getTeacherAnalytics().
+  // Triggered whenever the teacher selects a different class.
+  // ============================================================
   useEffect(() => {
     if (!selectedClassId) return
     setLoading(true)
@@ -226,6 +233,13 @@ export default function TeacherAnalytics() {
   const allStudents = data?.students || []
   const recordsBySession = data?.records_by_session || {}
 
+  // ============================================================
+  // TEACHER ANALYTICS — DATE/TIME FILTER (filteredTrend)
+  // ============================================================
+  // Filters the session trend array by the selected date/time range.
+  // Used by the stat cards, charts, and student table so all metrics
+  // update together when the teacher applies a filter.
+  // ============================================================
   const filteredTrend = useMemo(() => {
     if (!dateFrom && !dateTo && !timeFrom && !timeTo) return allTrend
     return allTrend.filter((row) => {
@@ -239,6 +253,14 @@ export default function TeacherAnalytics() {
     })
   }, [allTrend, dateFrom, dateTo, timeFrom, timeTo])
 
+  // ============================================================
+  // TEACHER ANALYTICS — STUDENT COUNTS RECALCULATION
+  // ============================================================
+  // When a date filter is active, re-derives each student's
+  // present/late/absent counts and attendance_rate from only the
+  // filtered sessions using the records_by_session lookup.
+  // This avoids a new API call for every filter change.
+  // ============================================================
   // When date filters are active, recompute each student's counts from only the filtered sessions
   const studentsWithFilteredCounts = useMemo(() => {
     if (!dateFrom && !dateTo && !timeFrom && !timeTo) return allStudents
@@ -274,6 +296,13 @@ export default function TeacherAnalytics() {
     })
   }, [studentsWithFilteredCounts, studentStatus, sortKey, sortDir])
 
+  // ============================================================
+  // TEACHER ANALYTICS — FILTERED OVERVIEW (Stat Cards)
+  // ============================================================
+  // Recomputes the 7 overview metrics (avg rate, best/worst rate,
+  // total present/late/absent, session count) from the filtered
+  // trend rows so the stat cards always reflect the active filter.
+  // ============================================================
   const filteredOverview = useMemo(() => {
     if (!overview) return null
     if (!dateFrom && !dateTo && !timeFrom && !timeTo) return overview
@@ -291,6 +320,13 @@ export default function TeacherAnalytics() {
     }
   }, [overview, filteredTrend, dateFrom, dateTo, timeFrom, timeTo])
 
+  // ============================================================
+  // TEACHER ANALYTICS — TREND DIRECTION BADGE
+  // ============================================================
+  // Compares avg attendance rate of the first half of sessions vs
+  // the second half to show an "Improving" / "Declining" / "Stable"
+  // badge next to the page title.
+  // ============================================================
   // Trend direction: compare avg rate of first half vs second half of sessions
   const trendDirection = useMemo(() => {
     if (allTrend.length < 4) return null
@@ -312,6 +348,13 @@ export default function TeacherAnalytics() {
     { name: "Absent", value: filteredOverview.total_absent },
   ] : []
 
+  // ============================================================
+  // TEACHER ANALYTICS — COMPOSED CHART DATA (Bar + Line)
+  // ============================================================
+  // Transforms filteredTrend into the shape Recharts expects:
+  // bars for Present/Late/Absent counts, line for Rate %.
+  // Displayed in the "Session-by-Session Trend" chart.
+  // ============================================================
   // ComposedChart data: bars for counts + line for attendance rate %
   const composedData = filteredTrend.map((row, idx) => ({
     name: `#${idx + 1} ${row.label}`,

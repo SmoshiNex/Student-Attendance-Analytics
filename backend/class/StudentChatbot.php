@@ -41,6 +41,15 @@ class StudentChatbot
             ];
         }
 
+        // Intent detection — answer directly from DB for common questions, no tokens used
+        $localReply = $this->tryLocalReply($studentPkId, $message);
+        if ($localReply !== null) {
+            return [
+                'status' => 'success',
+                'reply' => $this->sanitizeAssistantReply($localReply),
+            ];
+        }
+
         $studentAnalyticsContext = $this->buildStudentAnalyticsContext($studentPkId, $message);
 
         $geminiResult = $this->generateWithGemini($studentContext, $studentAnalyticsContext, $history, $message);
@@ -65,30 +74,102 @@ class StudentChatbot
             return null;
         }
 
+        // Classes
         if (
-            $this->containsAny($normalized, ['enrolled', 'my class', 'my classes', 'subjects']) ||
+            $this->containsAny($normalized, ['enrolled', 'my class', 'my classes', 'my subjects']) ||
             ($this->containsAny($normalized, ['what', 'which', 'show', 'list']) && $this->containsAny($normalized, ['class', 'classes', 'subject', 'subjects']))
         ) {
             return $this->buildEnrolledClassesReply($studentPkId);
         }
 
+        // Classmates
         if ($this->containsAny($normalized, ['classmate', 'classmates', 'class roster', 'roster', 'students in my class', 'who is in my class'])) {
             return $this->buildClassmatesReply($studentPkId);
         }
 
-        if ($this->containsAny($normalized, ['attendance rate', 'attendance', 'present', 'late', 'absent', 'analytics'])) {
+        // Teachers
+        if (
+            $this->containsAny($normalized, ['my teacher', 'my teachers', 'my instructor', 'my instructors', 'who teach', 'who is my teacher', 'who are my teachers'])
+        ) {
+            return $this->buildTeachersReply($studentPkId);
+        }
+
+        // Attendance
+        if ($this->containsAny($normalized, ['attendance rate', 'attendance', 'present', 'late', 'absent', 'analytics', 'performance'])) {
             return $this->buildAttendanceSummaryReply($studentPkId);
         }
 
+        // Notifications
         if ($this->containsAny($normalized, ['notification', 'notifications', 'unread'])) {
             return $this->buildNotificationReply($studentPkId);
         }
 
-        if ($this->containsAny($normalized, ['help', 'how to', 'what can you do'])) {
+        // Schedule
+        if ($this->containsAny($normalized, ['schedule', 'my schedule', 'class schedule', 'when is my class'])) {
+            return $this->buildScheduleReply($studentPkId);
+        }
+
+        // Help
+        if ($this->containsAny($normalized, ['help', 'how to', 'what can you do', 'what can you help'])) {
             return $this->buildPortalHelpReply();
         }
 
         return null;
+    }
+
+    private function buildTeachersReply($studentPkId)
+    {
+        $classes = $this->getEnrolledClasses($studentPkId);
+        if (empty($classes)) {
+            return 'You are not enrolled in any classes yet, so I could not find any teachers to show.';
+        }
+
+        $seen = [];
+        $lines = [];
+        foreach ($classes as $classItem) {
+            $teacher = trim((string)($classItem['teacher_name'] ?? ''));
+            $label = $this->formatClassLabel(
+                (string)($classItem['class_code'] ?? ''),
+                (string)($classItem['subject_name'] ?? ''),
+                (string)($classItem['class_name'] ?? '')
+            );
+            if ($teacher !== '' && !in_array($teacher, $seen, true)) {
+                $seen[] = $teacher;
+            }
+            $lines[] = '- ' . $label . ': ' . ($teacher !== '' ? $teacher : 'Unknown instructor');
+        }
+
+        $unique = count($seen);
+        $header = $unique === 1
+            ? 'Your teacher is ' . $seen[0] . '. Here are your classes:'
+            : 'You have ' . $unique . ' teacher(s). Here are your classes by instructor:';
+
+        return $header . "\n" . implode("\n", $lines);
+    }
+
+    private function buildScheduleReply($studentPkId)
+    {
+        $classes = $this->getEnrolledClasses($studentPkId);
+        if (empty($classes)) {
+            return 'You are not enrolled in any classes yet, so there is no schedule to show.';
+        }
+
+        $lines = [];
+        foreach ($classes as $index => $classItem) {
+            $label = $this->formatClassLabel(
+                (string)($classItem['class_code'] ?? ''),
+                (string)($classItem['subject_name'] ?? ''),
+                (string)($classItem['class_name'] ?? '')
+            );
+            $schedule = trim((string)($classItem['schedule'] ?? ''));
+            $room = trim((string)($classItem['room'] ?? ''));
+            $line = ((int)$index + 1) . '. ' . $label;
+            if ($schedule !== '') $line .= ' — ' . $schedule;
+            if ($room !== '') $line .= ' (Room: ' . $room . ')';
+            $lines[] = $line;
+        }
+
+        return 'Your class schedule:' . "\n" . implode("\n", $lines);
     }
 
     private function buildEnrolledClassesReply($studentPkId)
@@ -650,7 +731,7 @@ class StudentChatbot
             'generationConfig' => [
                 'temperature' => 0.3,
                 'topP' => 0.9,
-                'maxOutputTokens' => 300,
+                'maxOutputTokens' => 1024,
             ],
         ];
 
@@ -903,7 +984,7 @@ class StudentChatbot
             CURLOPT_HTTPHEADER => $headers,
             CURLOPT_POSTFIELDS => $json,
             CURLOPT_CONNECTTIMEOUT => 10,
-            CURLOPT_TIMEOUT => 25,
+            CURLOPT_TIMEOUT => 45,
         ]);
 
         $responseBody = curl_exec($ch);

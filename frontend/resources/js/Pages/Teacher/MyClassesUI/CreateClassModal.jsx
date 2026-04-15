@@ -9,9 +9,14 @@ import { Input } from "@/Components/ui/input"
 import { Label } from "@/Components/ui/label"
 import { useState, useEffect } from "react"
 import axios from "axios"
-import { SuccessModal, ErrorModal } from "@/Components/ui/AppModals"
-
+import { RefreshCw } from "lucide-react"
 import { teacherClassApiUrl } from "@/lib/nativeApi"
+import { toast } from "@/lib/toast"
+
+const generateEnrollmentCode = () => {
+  const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
+  return Array.from({ length: 7 }, () => chars[Math.floor(Math.random() * chars.length)]).join("")
+}
 
 export default function CreateClassModal({ isOpen, onClose }) {
   const [data, setData] = useState({
@@ -20,11 +25,10 @@ export default function CreateClassModal({ isOpen, onClose }) {
     subject_name: "",
     schedule: "",
     room: "",
+    enrollment_code: "",
   })
   const [processing, setProcessing] = useState(false)
   const [errors, setErrors] = useState({})
-  const [successModal, setSuccessModal] = useState(false)
-  const [errorModal, setErrorModal] = useState({ open: false, message: "" })
 
   // Schedule Builder States
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -72,12 +76,17 @@ export default function CreateClassModal({ isOpen, onClose }) {
       subject_name: "",
       schedule: "",
       room: "",
+      enrollment_code: generateEnrollmentCode(),
     })
     setErrors({})
     setSelectedDays([])
     setStartTime("")
     setEndTime("")
   }
+
+  useEffect(() => {
+    if (isOpen) updateField("enrollment_code", generateEnrollmentCode())
+  }, [isOpen])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -88,13 +97,10 @@ export default function CreateClassModal({ isOpen, onClose }) {
       await axios.post(teacherClassApiUrl(), data, { withCredentials: true })
       resetForm()
       onClose()
-      setSuccessModal(true)
+      toast.success("Class Created!", "Your new class has been created successfully.")
     } catch (error) {
       onClose()
-      setErrorModal({
-        open: true,
-        message: error?.response?.data?.message || "Failed to create class.",
-      })
+      toast.error("Failed to Create Class", error?.response?.data?.message || "Failed to create class.")
     } finally {
       setProcessing(false)
     }
@@ -103,7 +109,7 @@ export default function CreateClassModal({ isOpen, onClose }) {
   return (
     <>
       <Dialog open={isOpen} onOpenChange={onClose}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Create New Class</DialogTitle>
           </DialogHeader>
@@ -202,6 +208,31 @@ export default function CreateClassModal({ isOpen, onClose }) {
               )}
             </div>
 
+            <div>
+              <Label htmlFor="enrollment_code">Enrollment Code</Label>
+              <div className="flex gap-2">
+                <Input
+                  id="enrollment_code"
+                  className="font-mono tracking-widest"
+                  value={data.enrollment_code}
+                  onChange={(e) => updateField("enrollment_code", e.target.value)}
+                />
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="icon"
+                  onClick={() => updateField("enrollment_code", generateEnrollmentCode())}
+                  title="Generate new code"
+                >
+                  <RefreshCw className="w-4 h-4" />
+                </Button>
+              </div>
+              <p className="text-xs text-gray-400 mt-1">Students enter this code to join your class. You can regenerate or edit it.</p>
+              {errors.enrollment_code && (
+                <p className="text-sm text-red-500">{errors.enrollment_code}</p>
+              )}
+            </div>
+
             {errors.form && (
               <p className="text-sm text-red-500">{errors.form}</p>
             )}
@@ -221,19 +252,6 @@ export default function CreateClassModal({ isOpen, onClose }) {
           </form>
         </DialogContent>
       </Dialog>
-
-      <SuccessModal
-        open={successModal}
-        title="Class Created!"
-        message="Your new class has been created successfully."
-        onClose={() => setSuccessModal(false)}
-      />
-      <ErrorModal
-        open={errorModal.open}
-        title="Failed to Create Class"
-        message={errorModal.message}
-        onClose={() => setErrorModal({ open: false, message: "" })}
-      />
     </>
   )
 }

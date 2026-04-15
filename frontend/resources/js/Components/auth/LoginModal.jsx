@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { UserPlus } from "lucide-react"
@@ -7,6 +7,7 @@ import PasswordInput from "@/Components/ui/PasswordInput"
 import logoUrl from "@/lib/logo"
 import { authApiUrl } from "@/lib/nativeApi"
 import { Link, useNavigate } from "react-router-dom"
+import { toast } from "@/lib/toast"
 
 export default function LoginModal() {
   const navigate = useNavigate()
@@ -17,7 +18,14 @@ export default function LoginModal() {
   })
   const [loginProcessing, setLoginProcessing] = useState(false)
   const [loginErrors, setLoginErrors] = useState({})
-  const [loginError, setLoginError] = useState("")
+
+  useEffect(() => {
+    const flag = sessionStorage.getItem("logout_toast")
+    if (flag) {
+      sessionStorage.removeItem("logout_toast")
+      toast.success("Logged out", "You have been logged out successfully.")
+    }
+  }, [])
 
   const validateEmail = (email) => {
     const value = (email || "").trim()
@@ -50,7 +58,6 @@ export default function LoginModal() {
 
     setLoginProcessing(true)
     setLoginErrors({})
-    setLoginError("")
     try {
       const response = await axios.post(
         authApiUrl("unified_login"),
@@ -62,21 +69,17 @@ export default function LoginModal() {
       const responsePayload = response?.data || {}
       if (responsePayload?.student?.student_id) {
         window.__nativeStudentId = responsePayload.student.student_id
-        window.localStorage.setItem(
-          "nativeStudentId",
-          responsePayload.student.student_id,
-        )
+        window.localStorage.setItem("nativeStudentId", responsePayload.student.student_id)
+        sessionStorage.setItem("login_toast", `Welcome back, ${responsePayload.student.first_name}!`)
         navigate("/student/dashboard")
       } else if (responsePayload?.teacher) {
+        sessionStorage.setItem("login_toast", `Welcome back, ${responsePayload.teacher.first_name}!`)
         navigate("/teacher/dashboard")
       } else {
         window.location.reload()
       }
     } catch (error) {
-      setLoginError(
-        error?.response?.data?.message ||
-          "Unable to log in. Please check your credentials.",
-      )
+      toast.error("Login Failed", error?.response?.data?.message || "Unable to log in. Please check your credentials.")
     } finally {
       setLoginProcessing(false)
     }
@@ -130,7 +133,6 @@ export default function LoginModal() {
               onChange={(e) => {
                 updateLoginData("password", e.target.value)
                 if (loginErrors.message) setLoginErrors({})
-                if (loginError) setLoginError("")
               }}
               placeholder="Password"
               className="h-11 border-gray-200 focus:border-black focus:ring-black rounded-lg"
@@ -141,12 +143,6 @@ export default function LoginModal() {
               </p>
             )}
           </div>
-
-          {loginError && (
-            <p className="text-xs text-red-600 font-medium ml-1">
-              {loginError}
-            </p>
-          )}
 
           <div className="flex justify-end pt-1">
             <Link

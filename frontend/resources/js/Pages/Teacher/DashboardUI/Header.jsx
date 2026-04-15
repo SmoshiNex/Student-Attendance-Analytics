@@ -3,6 +3,9 @@ import { Button } from "@/Components/ui/button"
 import { ConfirmModal } from "@/Components/ui/AppModals"
 import { authApiUrl } from "@/lib/nativeApi"
 import logoUrl from "@/lib/logo"
+import { toast } from "@/lib/toast"
+import { sileo } from "sileo"
+import { useSocket } from "@/hooks/useSocket"
 import {
   BarChart3,
   Bell,
@@ -112,6 +115,7 @@ const getPersonInitials = (firstName, lastName, fallback = "T") => {
 
 export default function Header({ active = "dashboard" }) {
   const navigate = useNavigate()
+  const socket = useSocket()
   const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false)
   const [teacherProfile, setTeacherProfile] = useState(null)
   const [confirmLogoutOpen, setConfirmLogoutOpen] = useState(false)
@@ -181,6 +185,34 @@ export default function Header({ active = "dashboard" }) {
     }
   }, [])
 
+  useEffect(() => {
+    if (!teacherProfile || active === "messages") return
+    socket.emit("register", { user_type: "teacher", user_id: teacherProfile.id })
+    const onMessage = (msg) => {
+      const senderName = msg.sender_name || "A student"
+      const preview = msg.attachment_url && !msg.message ? "📎 Attachment" : msg.message?.slice(0, 50) || ""
+      const id = sileo.info({
+        title: `New Message From ${senderName}`,
+        description: preview || "Sent you a message.",
+        button: {
+          title: "Reply",
+          onClick: () => {
+            sileo.dismiss(id)
+            sessionStorage.setItem("open_thread", JSON.stringify({
+              partner_type: msg.sender_type,
+              partner_id: msg.sender_id,
+              partner_name: senderName,
+            }))
+            navigate("/teacher/messages")
+          },
+        },
+        onDismiss: () => sileo.dismiss(id),
+      })
+    }
+    socket.on("receive_message", onMessage)
+    return () => socket.off("receive_message", onMessage)
+  }, [teacherProfile, socket, active])
+
   const handleLogout = async () => {
     if (logoutProcessing) {
       return
@@ -192,6 +224,7 @@ export default function Header({ active = "dashboard" }) {
     } finally {
       setConfirmLogoutOpen(false)
       setLogoutProcessing(false)
+      sessionStorage.setItem("logout_toast", "1")
       navigate("/", { replace: true })
     }
   }

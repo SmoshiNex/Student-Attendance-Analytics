@@ -50,7 +50,8 @@ class EmailService
         string  $className,
         ?string $checkInTime,
         int     $studentId,
-        ?int    $teacherId = null
+        ?int    $teacherId = null,
+        string  $subjectName = ''
     ): array {
         $date = date('F d, Y');
 
@@ -86,8 +87,8 @@ class EmailService
             $mail->Subject = "Attendance Notification: {$studentName} - {$statusLabel}";
 
             $mail->isHTML(true);
-            $mail->Body    = $this->buildEmailHtml($studentName, $status, $className, $checkInTime, $date);
-            $mail->AltBody = $this->buildEmailText($studentName, $status, $className, $checkInTime, $date);
+            $mail->Body    = $this->buildEmailHtml($studentName, $status, $className, $checkInTime, $date, $subjectName);
+            $mail->AltBody = $this->buildEmailText($studentName, $status, $className, $checkInTime, $date, $subjectName);
 
             $mail->send();
 
@@ -201,41 +202,9 @@ class EmailService
 
                         $mail->Subject = "{$subjectContext} OTP - Smart Campus Attendance";
                         $mail->isHTML(true);
-                        $mail->Body = '<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>' . $subjectContext . '</title>
-</head>
-<body style="margin:0;padding:0;font-family:Arial,sans-serif;background:#f3f4f6;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#f3f4f6;padding:24px 12px;">
-    <tr>
-        <td align="center">
-            <table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="max-width:560px;background:#ffffff;border-radius:12px;overflow:hidden;box-shadow:0 6px 24px rgba(0,0,0,0.08);">
-                <tr>
-                    <td style="background:#111827;padding:22px 24px;color:#ffffff;">
-                        <h2 style="margin:0;font-size:20px;line-height:1.3;">Smart Campus Attendance</h2>
-                        <p style="margin:6px 0 0 0;font-size:13px;opacity:0.9;">' . $bodyHeading . '</p>
-                    </td>
-                </tr>
-                <tr>
-                    <td style="padding:24px;">
-                        <p style="margin:0 0 14px 0;color:#111827;font-size:15px;">Hello ' . $safeName . ',</p>
-                        <p style="margin:0 0 14px 0;color:#374151;font-size:14px;line-height:1.6;">We received a request to ' . $bodyContext . ' for your <strong>' . $safeLabel . '</strong>. Use the OTP code below to continue:</p>
-                        <div style="margin:18px 0;padding:14px 16px;border:1px dashed #d1d5db;background:#f9fafb;border-radius:10px;text-align:center;">
-                            <span style="display:inline-block;letter-spacing:8px;font-size:28px;font-weight:700;color:#111827;">' . $safeCode . '</span>
-                        </div>
-                        <p style="margin:0 0 10px 0;color:#374151;font-size:14px;">This OTP expires in 10 minutes. Do not share this code with anyone.</p>
-                        <p style="margin:0;color:#6b7280;font-size:13px;">If you did not request this, you can safely ignore this email.</p>
-                    </td>
-                </tr>
-            </table>
-        </td>
-    </tr>
-</table>
-</body>
-</html>';
+                        ob_start();
+                        include __DIR__ . '/email-templates/otp.php';
+                        $mail->Body = ob_get_clean();
 
                         $mail->AltBody = "Smart Campus Attendance - {$subjectContext}\n"
                                 . "Hello " . ($recipientName !== '' ? $recipientName : 'User') . ",\n\n"
@@ -405,7 +374,8 @@ class EmailService
         string  $status,
         string  $className,
         ?string $checkInTime,
-        string  $date
+        string  $date,
+        string  $subjectName = ''
     ): string {
         $statusLabels = ['present' => 'is present', 'late' => 'arrived late', 'absent' => 'is absent'];
         $statusLabel  = $statusLabels[$status] ?? 'has checked in';
@@ -418,20 +388,9 @@ class EmailService
         ];
         $sc = $statusColors[$status] ?? ['bg' => '#e5e7eb', 'color' => '#111827'];
 
-        $checkInRow = '';
-        if ($checkInTime) {
-            $checkInRow = "
-            <tr>
-                <td style=\"padding:10px 0;border-bottom:1px solid #e5e7eb;\">
-                    <table role=\"presentation\" cellspacing=\"0\" cellpadding=\"0\" border=\"0\" width=\"100%\">
-                        <tr>
-                            <td style=\"font-weight:bold;color:#6b7280;font-size:14px;\">Check-in Time:</td>
-                            <td align=\"right\" style=\"color:#111827;font-size:14px;\">" . htmlspecialchars($checkInTime) . "</td>
-                        </tr>
-                    </table>
-                </td>
-            </tr>";
-        }
+        $statusBg    = $sc['bg'];
+        $statusColor = $sc['color'];
+        $checkInTime = $checkInTime ?? '';
 
         $statusMessages = [
             'present' => '&#10003; Your child has successfully checked in on time for this class.',
@@ -439,100 +398,11 @@ class EmailService
             'absent'  => '&#10007; Your child has not checked in for this class session.',
         ];
         $statusMsg = $statusMessages[$status] ?? '';
+        $year      = (int) date('Y');
 
-        return '<!DOCTYPE html>
-<html lang="en">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width,initial-scale=1.0">
-<title>Attendance Notification</title>
-</head>
-<body style="margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,\'Segoe UI\',Roboto,\'Helvetica Neue\',Arial,sans-serif;background-color:#f4f4f4;line-height:1.6;">
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f4f4f4;">
-<tr><td align="center" style="padding:20px 10px;">
-<table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="max-width:600px;background-color:#ffffff;border-radius:8px;box-shadow:0 2px 4px rgba(0,0,0,0.1);">
-    <tr>
-        <td style="background-color:#1a1a1a;padding:30px 20px;text-align:center;border-radius:8px 8px 0 0;">
-            <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:bold;">Smart Campus Attendance</h1>
-            <p style="margin:8px 0 0 0;color:#ffffff;font-size:14px;opacity:0.9;">QR Attend System</p>
-        </td>
-    </tr>
-    <tr>
-        <td style="padding:30px 20px;">
-            <p style="margin:0 0 20px 0;color:#333333;font-size:16px;">Dear Parent/Guardian,</p>
-            <p style="margin:0 0 20px 0;color:#333333;font-size:15px;">
-                This is to inform you that <strong style="color:#111827;">' . htmlspecialchars($studentName) . '</strong>
-                <strong style="color:#111827;">' . $statusLabel . '</strong> for the following class:
-            </p>
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f9fafb;border-radius:8px;border-left:4px solid #1a1a1a;margin:20px 0;">
-                <tr><td style="padding:20px;">
-                    <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                        <tr>
-                            <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">
-                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                    <tr>
-                                        <td style="font-weight:bold;color:#6b7280;font-size:14px;">Student Name:</td>
-                                        <td align="right" style="color:#111827;font-size:14px;">' . htmlspecialchars($studentName) . '</td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">
-                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                    <tr>
-                                        <td style="font-weight:bold;color:#6b7280;font-size:14px;">Class:</td>
-                                        <td align="right" style="color:#111827;font-size:14px;">' . htmlspecialchars($className) . '</td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        <tr>
-                            <td style="padding:10px 0;border-bottom:1px solid #e5e7eb;">
-                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                    <tr>
-                                        <td style="font-weight:bold;color:#6b7280;font-size:14px;">Date:</td>
-                                        <td align="right" style="color:#111827;font-size:14px;">' . htmlspecialchars($date) . '</td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                        ' . $checkInRow . '
-                        <tr>
-                            <td style="padding:10px 0;">
-                                <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%">
-                                    <tr>
-                                        <td style="font-weight:bold;color:#6b7280;font-size:14px;">Status:</td>
-                                        <td align="right">
-                                            <span style="display:inline-block;padding:8px 16px;border-radius:20px;font-weight:bold;font-size:14px;background-color:' . $sc['bg'] . ';color:' . $sc['color'] . ';">' . $statusUpper . '</span>
-                                        </td>
-                                    </tr>
-                                </table>
-                            </td>
-                        </tr>
-                    </table>
-                </td></tr>
-            </table>
-            <table role="presentation" cellspacing="0" cellpadding="0" border="0" width="100%" style="background-color:#f3f4f6;border-radius:6px;margin:20px 0;">
-                <tr><td style="padding:15px;">
-                    <p style="margin:0;color:#111827;font-size:14px;">' . $statusMsg . '</p>
-                </td></tr>
-            </table>
-            <p style="margin:20px 0;color:#333333;font-size:15px;">If you have any questions or concerns, please contact the school administration.</p>
-            <p style="margin:25px 0 0 0;color:#333333;font-size:14px;">Best regards,<br><strong style="color:#111827;">Smart Campus Attendance System</strong></p>
-        </td>
-    </tr>
-    <tr>
-        <td style="padding:20px;text-align:center;border-top:1px solid #e5e7eb;">
-            <p style="margin:0 0 10px 0;color:#6b7280;font-size:12px;">This is an automated notification. Please do not reply to this email.</p>
-            <p style="margin:0;color:#6b7280;font-size:12px;">&copy; ' . date('Y') . ' Smart Campus Attendance - QR Attend System</p>
-        </td>
-    </tr>
-</table>
-</td></tr>
-</table>
-</body>
-</html>';
+        ob_start();
+        include __DIR__ . '/email-templates/attendance-notification.php';
+        return ob_get_clean();
     }
 
     private function buildEmailText(
@@ -540,7 +410,8 @@ class EmailService
         string  $status,
         string  $className,
         ?string $checkInTime,
-        string  $date
+        string  $date,
+        string  $subjectName = ''
     ): string {
         $statusLabels = ['present' => 'is present', 'late' => 'arrived late', 'absent' => 'is absent'];
         $statusLabel  = $statusLabels[$status] ?? 'has checked in';
@@ -554,6 +425,7 @@ class EmailService
             "",
             "Student Name : {$studentName}",
             "Class        : {$className}",
+            ($subjectName !== '' ? "Subject      : {$subjectName}" : ''),
             "Date         : {$date}",
         ];
 

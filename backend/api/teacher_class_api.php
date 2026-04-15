@@ -100,6 +100,21 @@ try {
         sendJsonResponse($result['status'], 'Classes fetched.', ['classes' => $result['classes'] ?? []]);
     }
 
+    if ($action === 'unenroll' && $method === 'DELETE') {
+        if (!$auth->isStudentLoggedIn()) {
+            sendJsonResponse('error', 'Unauthorized', null, 401);
+        }
+        $studentPkId = $auth->getStudentSessionId();
+        $classId = (int)($_GET['class_id'] ?? 0);
+
+        if ($classId <= 0) {
+            sendJsonResponse('error', 'class_id is required.', null, 422);
+        }
+
+        $result = $teacherClass->unenroll($classId, $studentPkId);
+        sendJsonResponse($result['status'], $result['message'], null, $result['httpCode'] ?? 200);
+    }
+
     // Public: get class info for registration page (no auth required)
     if ($action === 'get_class') {
         $classId = (int)($_GET['id'] ?? 0);
@@ -126,8 +141,9 @@ try {
         // If student is already logged in, just enroll them
         if ($auth->isStudentLoggedIn()) {
             $studentPkId = $auth->getStudentSessionId();
+            $enrollmentCode = trim((string)($jsonBody['enrollment_code'] ?? $_POST['enrollment_code'] ?? ''));
 
-            $result = $teacherClass->registerLoggedInStudent($classId, $studentPkId);
+            $result = $teacherClass->registerLoggedInStudent($classId, $studentPkId, $enrollmentCode);
             sendJsonResponse(
                 $result['status'],
                 $result['message'],
