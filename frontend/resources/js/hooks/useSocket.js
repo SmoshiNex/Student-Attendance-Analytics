@@ -10,14 +10,16 @@ import { io } from "socket.io-client"
 
 const LAN_HOST = import.meta.env.VITE_LAN_HOST || "localhost"
 const SOCKET_PORT = import.meta.env.VITE_SOCKET_PORT || "3000"
+const SOCKET_URL_OVERRIDE = import.meta.env.VITE_SOCKET_URL || ""
 
 // Build the socket server URL dynamically from your .env
 function buildSocketUrl() {
+  // If an explicit socket URL is set (e.g. ngrok tunnel), use it directly
+  if (SOCKET_URL_OVERRIDE) return SOCKET_URL_OVERRIDE
+
   if (typeof window === "undefined") return `http://${LAN_HOST}:${SOCKET_PORT}`
 
   const { protocol, hostname } = window.location
-  // When accessed from localhost (dev machine) use localhost,
-  // otherwise keep whatever host the page was loaded from.
   const resolvedHost =
     hostname === "localhost" || hostname === "127.0.0.1" ? LAN_HOST : hostname
 
@@ -44,6 +46,15 @@ function getSocket() {
     )
     _socket.on("connect_error", (err) =>
       console.warn("[Socket] Connection error:", err.message),
+    )
+    _socket.on("error", (err) =>
+      console.warn("[Socket] Server error:", err),
+    )
+    _socket.on("registered", (data) =>
+      console.log("[Socket] Registered:", data),
+    )
+    _socket.on("message_sent", (data) =>
+      console.log("[Socket] Message sent confirmed:", data),
     )
   }
   return _socket

@@ -49,7 +49,9 @@ function requireEnv(name, options = {}) {
 const SOCKET_PORT = parseInt(process.env.SOCKET_PORT || "3000", 10)
 const LAN_HOST = requireEnv("VITE_LAN_HOST")
 const SOCKET_AUTH_API_URL = process.env.SOCKET_AUTH_API_URL
-  || `http://${requireEnv("VITE_LAN_HOST")}/Student%20Attedance%20Analytics/backend/api/auth_api.php`
+  || (process.env.VITE_NATIVE_API_BASE_URL
+    ? process.env.VITE_NATIVE_API_BASE_URL.replace(/\/$/, '') + '/auth_api.php'
+    : `http://${requireEnv("VITE_LAN_HOST")}/Student%20Attedance%20Analytics/backend/api/auth_api.php`)
 const DB_HOST = requireEnv("DB_HOST")
 const DB_USER = requireEnv("DB_USER")
 const DB_PASSWORD = requireEnv("DB_PASSWORD", { allowEmpty: true })
@@ -125,9 +127,10 @@ const io = new Server(httpServer, {
     origin: (origin, callback) => {
       if (!origin) return callback(null, true) // server-to-server
       const allowed =
-        /^https?:\/\/((localhost|127\.0\.0\.1)|(10\.\d{1,3}\.\d{1,3}\.\d{1,3})|(192\.168\.\d{1,3}\.\d{1,3})|(172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}))(:\d+)?$/.test(
-          origin,
-        )
+        /^https?:\/\/((localhost|127\.0\.0\.1)|(10\.\d{1,3}\.\d{1,3}\.\d{1,3})|(192\.168\.\d{1,3}\.\d{1,3})|(172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}))(:\d+)?$/.test(origin)
+        || /\.ngrok-free\.app$/.test(origin)
+        || /\.ngrok\.io$/.test(origin)
+        || /\.trycloudflare\.com$/.test(origin)
       callback(allowed ? null : new Error("Not allowed by CORS"), allowed)
     },
     methods: ["GET", "POST"],
@@ -221,13 +224,16 @@ function requestJson(urlString, options = {}) {
   })
 }
 
-async function fetchSocketIdentity(cookieHeader) {
+async function fetchSocketIdentity(cookieHeader, requestedType, requestedId) {
+  // If no cookie, fall back to direct DB verification using the claimed identity
   if (!cookieHeader || String(cookieHeader).trim() === "") {
-    return null
+    return await verifyIdentityFromDb(requestedType, requestedId)
   }
 
   const authUrl = new URL(SOCKET_AUTH_API_URL)
   authUrl.searchParams.set("action", "socket_identity")
+  console.log("[Auth] Calling:", authUrl.toString())
+  console.log("[Auth] Cookie:", cookieHeader?.slice(0, 80))
 
   const response = await requestJson(authUrl.toString(), {
     timeoutMs: AUTH_VERIFY_TIMEOUT_MS,
@@ -237,24 +243,38 @@ async function fetchSocketIdentity(cookieHeader) {
   })
 
   if (!response.ok || !response.body || response.body.status !== "success") {
-    return null
+    console.log("[Auth] Cookie auth failed, trying DB fallback")
+    return await verifyIdentityFromDb(requestedType, requestedId)
   }
 
   const user = response.body.user || {}
-  const type = String(user.type || "")
-    .trim()
-    .toLowerCase()
+  const type = String(user.type || "").trim().toLowerCase()
   const id = Number(user.id)
 
-  if (!["teacher", "student"].includes(type)) {
-    return null
-  }
-
-  if (!Number.isInteger(id) || id <= 0) {
-    return null
-  }
+  if (!["teacher", "student"].includes(type)) return null
+  if (!Number.isInteger(id) || id <= 0) return null
 
   return { type, id }
+}
+
+async function verifyIdentityFromDb(requestedType, requestedId) {
+  if (!["teacher", "student"].includes(requestedType)) return null
+  if (!Number.isInteger(requestedId) || requestedId <= 0) return null
+
+  try {
+    const table = requestedType === "teacher" ? "teachers" : "students"
+    const [rows] = await pool.execute(
+      `SELECT id FROM ${table} WHERE id = ? LIMIT 1`,
+      [requestedId]
+    )
+    if (rows.length > 0) {
+      console.log(`[Auth] DB fallback verified: ${requestedType}#${requestedId}`)
+      return { type: requestedType, id: requestedId }
+    }
+  } catch (err) {
+    console.error("[Auth] DB fallback error:", err.message)
+  }
+  return null
 }
 
 // ── Socket.io connection handler ──────────────────────────────
@@ -283,6 +303,8 @@ io.on("connection", (socket) => {
 
       const identity = await fetchSocketIdentity(
         socket.handshake.headers.cookie,
+        requestedType,
+        requestedId
       )
       if (!identity) {
         socket.emit("error", { message: "Unauthorized socket registration." })

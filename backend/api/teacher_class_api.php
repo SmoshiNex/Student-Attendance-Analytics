@@ -7,26 +7,7 @@ require_once '../class/SessionConfig.php';
 
 header('Content-Type: application/json');
 
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (
-    $origin !== '' &&
-    preg_match(
-        '/^https?:\/\/((localhost|127\.0\.0\.1)|(10\.\d{1,3}\.\d{1,3}\.\d{1,3})|(192\.168\.\d{1,3}\.\d{1,3})|(172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}))(:\d+)?$/i',
-        $origin
-    )
-) {
-    header('Access-Control-Allow-Origin: ' . $origin);
-    header('Access-Control-Allow-Credentials: true');
-    header('Vary: Origin');
-}
-
-header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
-header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
+require_once 'cors.php';
 
 function sendJsonResponse($status, $message, $data = null, $httpCode = 200)
 {
@@ -98,6 +79,23 @@ try {
 
         $result = $teacherClass->listByStudent($studentPkId);
         sendJsonResponse($result['status'], 'Classes fetched.', ['classes' => $result['classes'] ?? []]);
+    }
+
+    // Logged-in student enrolls directly by typing an enrollment code
+    if ($action === 'enroll_by_code' && $method === 'POST') {
+        if (!$auth->isStudentLoggedIn()) {
+            sendJsonResponse('error', 'Unauthorized', null, 401);
+        }
+        $studentPkId    = $auth->getStudentSessionId();
+        $enrollmentCode = trim((string)($jsonBody['enrollment_code'] ?? ''));
+
+        $result = $teacherClass->enrollByCode($studentPkId, $enrollmentCode);
+        sendJsonResponse(
+            $result['status'],
+            $result['message'],
+            extractServiceData($result),
+            $result['httpCode'] ?? 200
+        );
     }
 
     if ($action === 'unenroll' && $method === 'DELETE') {

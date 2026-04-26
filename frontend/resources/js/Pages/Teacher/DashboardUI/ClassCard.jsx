@@ -21,6 +21,14 @@ export default function ClassCard({ classItem, onStartAttendance }) {
             )}
           </div>
           <p className="text-gray-600">{classItem.name}</p>
+          {classItem.enrollment_code && (
+            <p className="text-xs text-gray-700 mt-1">
+              Enrollment Code:{" "}
+              <span className="font-semibold tracking-wide">
+                {classItem.enrollment_code}
+              </span>
+            </p>
+          )}
           <div className="flex items-center mt-2 text-sm text-gray-500">
             <svg
               className="w-4 h-4 mr-1"

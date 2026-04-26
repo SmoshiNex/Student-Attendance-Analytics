@@ -20,8 +20,10 @@ if (!window.__axiosLoadingInterceptorsInstalled) {
 
   window.axios.interceptors.request.use(
     (config) => {
-      activeRequests += 1
-      emitLoadingState()
+      if (!config.silent) {
+        activeRequests += 1
+        emitLoadingState()
+      }
       return config
     },
     (error) => {
@@ -32,13 +34,17 @@ if (!window.__axiosLoadingInterceptorsInstalled) {
 
   window.axios.interceptors.response.use(
     (response) => {
-      activeRequests = Math.max(0, activeRequests - 1)
-      emitLoadingState()
+      if (!response.config.silent) {
+        activeRequests = Math.max(0, activeRequests - 1)
+        emitLoadingState()
+      }
       return response
     },
     (error) => {
-      activeRequests = Math.max(0, activeRequests - 1)
-      emitLoadingState()
+      if (!error.config?.silent) {
+        activeRequests = Math.max(0, activeRequests - 1)
+        emitLoadingState()
+      }
       return Promise.reject(error)
     },
   )

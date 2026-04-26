@@ -3,15 +3,38 @@ import { useNavigate } from "react-router-dom"
 import axios from "axios"
 import { attendanceApiUrl, teacherClassApiUrl } from "@/lib/nativeApi"
 import Header from "../DashboardUI/Header"
-import { TrendingUp, Users, Calendar, AlertTriangle, Award, TrendingDown, X, Download, ChevronUp, ChevronDown } from "lucide-react"
 import {
-  ComposedChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
-  Line, PieChart, Pie, Cell, ResponsiveContainer,
+  TrendingUp,
+  Users,
+  Calendar,
+  AlertTriangle,
+  Award,
+  TrendingDown,
+  X,
+  Download,
+  ChevronUp,
+  ChevronDown,
+} from "lucide-react"
+import {
+  ComposedChart,
+  Bar,
+  XAxis,
+  YAxis,
+  CartesianGrid,
+  Tooltip,
+  Legend,
+  Line,
+  PieChart,
+  Pie,
+  Cell,
+  ResponsiveContainer,
 } from "recharts"
 
 function toTitleCase(str) {
   if (!str) return ""
-  return String(str).toLowerCase().replace(/\b\w/g, (c) => c.toUpperCase())
+  return String(str)
+    .toLowerCase()
+    .replace(/\b\w/g, (c) => c.toUpperCase())
 }
 
 function StatCard({ label, value, sub, icon: Icon, color = "gray" }) {
@@ -35,7 +58,15 @@ function StatCard({ label, value, sub, icon: Icon, color = "gray" }) {
 
 const PIE_COLORS = ["#22c55e", "#eab308", "#ef4444"]
 
-function exportPdf(students, classLabel, filteredTrend, recordsBySession, overview, dateFrom, dateTo) {
+function exportPdf(
+  students,
+  classLabel,
+  filteredTrend,
+  recordsBySession,
+  overview,
+  dateFrom,
+  dateTo,
+) {
   import("jspdf").then(({ default: jsPDF }) => {
     import("jspdf-autotable").then(({ applyPlugin, autoTable }) => {
       applyPlugin(jsPDF)
@@ -46,7 +77,10 @@ function exportPdf(students, classLabel, filteredTrend, recordsBySession, overvi
       doc.text(`Analytics Report — ${classLabel}`, 14, 16)
       doc.setFontSize(9)
       doc.setTextColor(120)
-      const rangeLabel = dateFrom || dateTo ? ` · ${dateFrom || ""} → ${dateTo || "today"}` : " · All time"
+      const rangeLabel =
+        dateFrom || dateTo
+          ? ` · ${dateFrom || ""} → ${dateTo || "today"}`
+          : " · All time"
       doc.text(`Generated: ${new Date().toLocaleString()}${rangeLabel}`, 14, 22)
       doc.setTextColor(0)
 
@@ -55,12 +89,23 @@ function exportPdf(students, classLabel, filteredTrend, recordsBySession, overvi
         doc.setFontSize(10)
         doc.text(
           `Sessions: ${overview.total_sessions}  |  Avg Rate: ${overview.avg_attendance_rate}%  |  Present: ${overview.total_present}  |  Late: ${overview.total_late}  |  Absent: ${overview.total_absent}`,
-          14, 29
+          14,
+          29,
         )
       }
 
       // Student summary table
-      const summaryHead = [["Student Name", "Student ID", "Present", "Late", "Absent", "Rate", "Status"]]
+      const summaryHead = [
+        [
+          "Student Name",
+          "Student ID",
+          "Present",
+          "Late",
+          "Absent",
+          "Rate",
+          "Status",
+        ],
+      ]
       const summaryBody = students.map((s) => [
         toTitleCase(s.student_name),
         s.student_id,
@@ -77,10 +122,15 @@ function exportPdf(students, classLabel, filteredTrend, recordsBySession, overvi
         body: summaryBody,
         theme: "grid",
         styles: { fontSize: 9, cellPadding: 2.5 },
-        headStyles: { fillColor: [11, 43, 70], textColor: 255, fontStyle: "bold" },
+        headStyles: {
+          fillColor: [11, 43, 70],
+          textColor: 255,
+          fontStyle: "bold",
+        },
         didParseCell(data) {
           if (data.section === "body" && data.column.index === 6) {
-            data.cell.styles.textColor = data.cell.raw === "At Risk" ? [220, 38, 38] : [22, 163, 74]
+            data.cell.styles.textColor =
+              data.cell.raw === "At Risk" ? [220, 38, 38] : [22, 163, 74]
             data.cell.styles.fontStyle = "bold"
           }
         },
@@ -102,7 +152,17 @@ function exportPdf(students, classLabel, filteredTrend, recordsBySession, overvi
           autoTable(doc, {
             startY: doc.lastAutoTable.finalY + 8,
             head: [
-              [{ content: toTitleCase(s.student_name) + " — " + s.student_id, colSpan: 4, styles: { fillColor: [243, 244, 246], textColor: [30, 30, 30], fontStyle: "bold" } }],
+              [
+                {
+                  content: toTitleCase(s.student_name) + " — " + s.student_id,
+                  colSpan: 4,
+                  styles: {
+                    fillColor: [243, 244, 246],
+                    textColor: [30, 30, 30],
+                    fontStyle: "bold",
+                  },
+                },
+              ],
               ["#", "Session Date", "Check-in Time", "Status"],
             ],
             body: sessionRows,
@@ -113,8 +173,10 @@ function exportPdf(students, classLabel, filteredTrend, recordsBySession, overvi
               if (data.section === "body" && data.column.index === 3) {
                 const v = String(data.cell.raw).toLowerCase()
                 if (v === "present") data.cell.styles.textColor = [22, 163, 74]
-                else if (v === "late") data.cell.styles.textColor = [202, 138, 4]
-                else if (v === "absent") data.cell.styles.textColor = [220, 38, 38]
+                else if (v === "late")
+                  data.cell.styles.textColor = [202, 138, 4]
+                else if (v === "absent")
+                  data.cell.styles.textColor = [220, 38, 38]
                 data.cell.styles.fontStyle = "bold"
               }
             },
@@ -129,9 +191,23 @@ function exportPdf(students, classLabel, filteredTrend, recordsBySession, overvi
 
 function exportCsv(students, className, filteredTrend, recordsBySession) {
   // Header: summary columns + one column per session
-  const sessionHeaders = filteredTrend.map((s, i) => `"#${i + 1} ${s.label} (${s.started_at}) - Status"`,)
-  const timeHeaders    = filteredTrend.map((s, i) => `"#${i + 1} ${s.label} - Check-in Time"`)
-  const header = ["Student Name", "Student ID", "Present", "Late", "Absent", "Attendance Rate", "Status", ...sessionHeaders, ...timeHeaders]
+  const sessionHeaders = filteredTrend.map(
+    (s, i) => `"#${i + 1} ${s.label} (${s.started_at}) - Status"`,
+  )
+  const timeHeaders = filteredTrend.map(
+    (s, i) => `"#${i + 1} ${s.label} - Check-in Time"`,
+  )
+  const header = [
+    "Student Name",
+    "Student ID",
+    "Present",
+    "Late",
+    "Absent",
+    "Attendance Rate",
+    "Status",
+    ...sessionHeaders,
+    ...timeHeaders,
+  ]
 
   const rows = students.map((s) => {
     const summary = [
@@ -143,8 +219,14 @@ function exportCsv(students, className, filteredTrend, recordsBySession) {
       `${s.attendance_rate}%`,
       s.at_risk ? "At Risk" : "Good",
     ]
-    const statuses   = filteredTrend.map((session) => recordsBySession[session.session_id]?.[s.id]?.status || "absent")
-    const checkTimes = filteredTrend.map((session) => recordsBySession[session.session_id]?.[s.id]?.checked_in_at || "—")
+    const statuses = filteredTrend.map(
+      (session) =>
+        recordsBySession[session.session_id]?.[s.id]?.status || "absent",
+    )
+    const checkTimes = filteredTrend.map(
+      (session) =>
+        recordsBySession[session.session_id]?.[s.id]?.checked_in_at || "—",
+    )
     return [...summary, ...statuses, ...checkTimes]
       .map((v) => `"${String(v).replace(/"/g, '""')}"`)
       .join(",")
@@ -186,16 +268,23 @@ export default function TeacherAnalytics() {
 
   useEffect(() => {
     mountedRef.current = true
-    axios.get(teacherClassApiUrl(), { withCredentials: true })
+    axios
+      .get(teacherClassApiUrl(), { withCredentials: true })
       .then((res) => {
         if (!mountedRef.current) return
         const list = res.data?.classes || []
         setClasses(list)
         if (list.length > 0) setSelectedClassId(String(list[0].id))
       })
-      .catch(() => { if (mountedRef.current) navigate("/", { replace: true }) })
-      .finally(() => { if (mountedRef.current) setClassesLoading(false) })
-    return () => { mountedRef.current = false }
+      .catch(() => {
+        if (mountedRef.current) navigate("/", { replace: true })
+      })
+      .finally(() => {
+        if (mountedRef.current) setClassesLoading(false)
+      })
+    return () => {
+      mountedRef.current = false
+    }
   }, [navigate])
 
   // ============================================================
@@ -218,14 +307,25 @@ export default function TeacherAnalytics() {
     setActivePreset("")
     setSortKey("student_name")
     setSortDir("asc")
-    axios.get(attendanceApiUrl("teacher_analytics", { class_id: selectedClassId }), { withCredentials: true })
-      .then((res) => { if (mountedRef.current) setData(res.data) })
+    axios
+      .get(
+        attendanceApiUrl("teacher_analytics", { class_id: selectedClassId }),
+        { withCredentials: true },
+      )
+      .then((res) => {
+        if (mountedRef.current) setData(res.data)
+      })
       .catch((err) => {
         if (!mountedRef.current) return
-        if (err?.response?.status === 401) { navigate("/", { replace: true }); return }
+        if (err?.response?.status === 401) {
+          navigate("/", { replace: true })
+          return
+        }
         setError(err?.response?.data?.message || "Failed to load analytics.")
       })
-      .finally(() => { if (mountedRef.current) setLoading(false) })
+      .finally(() => {
+        if (mountedRef.current) setLoading(false)
+      })
   }, [selectedClassId, navigate])
 
   const overview = data?.overview
@@ -267,7 +367,9 @@ export default function TeacherAnalytics() {
     const filteredSessionIds = new Set(filteredTrend.map((r) => r.session_id))
 
     return allStudents.map((s) => {
-      let present = 0, late = 0, absent = 0
+      let present = 0,
+        late = 0,
+        absent = 0
       filteredSessionIds.forEach((sid) => {
         const rec = recordsBySession[sid]?.[s.id]
         const status = rec?.status
@@ -276,10 +378,26 @@ export default function TeacherAnalytics() {
         else absent++
       })
       const total = filteredSessionIds.size
-      const rate = total > 0 ? Math.round(((present + late) / total) * 1000) / 10 : 0
-      return { ...s, present, late, absent, attendance_rate: rate, at_risk: rate < 75 }
+      const rate =
+        total > 0 ? Math.round(((present + late) / total) * 1000) / 10 : 0
+      return {
+        ...s,
+        present,
+        late,
+        absent,
+        attendance_rate: rate,
+        at_risk: rate < 75,
+      }
     })
-  }, [allStudents, filteredTrend, dateFrom, dateTo, timeFrom, timeTo, recordsBySession])
+  }, [
+    allStudents,
+    filteredTrend,
+    dateFrom,
+    dateTo,
+    timeFrom,
+    timeTo,
+    recordsBySession,
+  ])
 
   const filteredStudents = useMemo(() => {
     let list = studentsWithFilteredCounts
@@ -287,7 +405,8 @@ export default function TeacherAnalytics() {
     else if (studentStatus === "good") list = list.filter((s) => !s.at_risk)
 
     return [...list].sort((a, b) => {
-      let av = a[sortKey], bv = b[sortKey]
+      let av = a[sortKey],
+        bv = b[sortKey]
       if (typeof av === "string") av = av.toLowerCase()
       if (typeof bv === "string") bv = bv.toLowerCase()
       if (av < bv) return sortDir === "asc" ? -1 : 1
@@ -306,12 +425,23 @@ export default function TeacherAnalytics() {
   const filteredOverview = useMemo(() => {
     if (!overview) return null
     if (!dateFrom && !dateTo && !timeFrom && !timeTo) return overview
-    if (filteredTrend.length === 0) return { ...overview, total_sessions: 0, avg_attendance_rate: 0, best_session_rate: 0, worst_session_rate: 0, total_present: 0, total_late: 0, total_absent: 0 }
+    if (filteredTrend.length === 0)
+      return {
+        ...overview,
+        total_sessions: 0,
+        avg_attendance_rate: 0,
+        best_session_rate: 0,
+        worst_session_rate: 0,
+        total_present: 0,
+        total_late: 0,
+        total_absent: 0,
+      }
     const rates = filteredTrend.map((r) => r.attendance_rate)
     return {
       ...overview,
       total_sessions: filteredTrend.length,
-      avg_attendance_rate: Math.round(rates.reduce((a, b) => a + b, 0) / rates.length * 10) / 10,
+      avg_attendance_rate:
+        Math.round((rates.reduce((a, b) => a + b, 0) / rates.length) * 10) / 10,
       best_session_rate: Math.max(...rates),
       worst_session_rate: Math.min(...rates),
       total_present: filteredTrend.reduce((a, r) => a + r.present, 0),
@@ -333,20 +463,29 @@ export default function TeacherAnalytics() {
     const mid = Math.floor(allTrend.length / 2)
     const firstHalf = allTrend.slice(0, mid)
     const secondHalf = allTrend.slice(mid)
-    const avg = (arr) => arr.reduce((s, r) => s + r.attendance_rate, 0) / arr.length
+    const avg = (arr) =>
+      arr.reduce((s, r) => s + r.attendance_rate, 0) / arr.length
     const diff = avg(secondHalf) - avg(firstHalf)
     if (Math.abs(diff) < 2) return "stable"
     return diff > 0 ? "up" : "down"
   }, [allTrend])
 
   const atRiskCount = allStudents.filter((s) => s.at_risk).length
-  const hasActiveFilters = dateFrom || dateTo || timeFrom || timeTo || studentStatus !== "all" || activePreset !== ""
+  const hasActiveFilters =
+    dateFrom ||
+    dateTo ||
+    timeFrom ||
+    timeTo ||
+    studentStatus !== "all" ||
+    activePreset !== ""
 
-  const pieData = filteredOverview ? [
-    { name: "Present", value: filteredOverview.total_present },
-    { name: "Late", value: filteredOverview.total_late },
-    { name: "Absent", value: filteredOverview.total_absent },
-  ] : []
+  const pieData = filteredOverview
+    ? [
+        { name: "Present", value: filteredOverview.total_present },
+        { name: "Late", value: filteredOverview.total_late },
+        { name: "Absent", value: filteredOverview.total_absent },
+      ]
+    : []
 
   // ============================================================
   // TEACHER ANALYTICS — COMPOSED CHART DATA (Bar + Line)
@@ -365,15 +504,21 @@ export default function TeacherAnalytics() {
   }))
 
   const handleSort = (key) => {
-    if (sortKey === key) setSortDir((d) => d === "asc" ? "desc" : "asc")
-    else { setSortKey(key); setSortDir("asc") }
+    if (sortKey === key) setSortDir((d) => (d === "asc" ? "desc" : "asc"))
+    else {
+      setSortKey(key)
+      setSortDir("asc")
+    }
   }
 
   const SortIcon = ({ col }) => {
-    if (sortKey !== col) return <ChevronUp className="w-3 h-3 opacity-20 inline ml-0.5" />
-    return sortDir === "asc"
-      ? <ChevronUp className="w-3 h-3 inline ml-0.5" />
-      : <ChevronDown className="w-3 h-3 inline ml-0.5" />
+    if (sortKey !== col)
+      return <ChevronUp className="w-3 h-3 opacity-20 inline ml-0.5" />
+    return sortDir === "asc" ? (
+      <ChevronUp className="w-3 h-3 inline ml-0.5" />
+    ) : (
+      <ChevronDown className="w-3 h-3 inline ml-0.5" />
+    )
   }
 
   // Returns YYYY-MM-DD for a date offset by `days` from today
@@ -384,11 +529,36 @@ export default function TeacherAnalytics() {
   }
 
   const PRESETS = [
-    { label: "Last 7 Days",   key: "7d",  from: () => offsetDate(-6),  to: () => offsetDate(0) },
-    { label: "Last 4 Weeks",  key: "4w",  from: () => offsetDate(-27), to: () => offsetDate(0) },
-    { label: "Last 3 Months", key: "3m",  from: () => offsetDate(-89), to: () => offsetDate(0) },
-    { label: "Last 6 Months", key: "6m",  from: () => offsetDate(-179),to: () => offsetDate(0) },
-    { label: "Last 1 Year",   key: "1y",  from: () => offsetDate(-364),to: () => offsetDate(0) },
+    {
+      label: "Last 7 Days",
+      key: "7d",
+      from: () => offsetDate(-6),
+      to: () => offsetDate(0),
+    },
+    {
+      label: "Last 4 Weeks",
+      key: "4w",
+      from: () => offsetDate(-27),
+      to: () => offsetDate(0),
+    },
+    {
+      label: "Last 3 Months",
+      key: "3m",
+      from: () => offsetDate(-89),
+      to: () => offsetDate(0),
+    },
+    {
+      label: "Last 6 Months",
+      key: "6m",
+      from: () => offsetDate(-179),
+      to: () => offsetDate(0),
+    },
+    {
+      label: "Last 1 Year",
+      key: "1y",
+      from: () => offsetDate(-364),
+      to: () => offsetDate(0),
+    },
   ]
 
   const applyPreset = (preset) => {
@@ -407,10 +577,18 @@ export default function TeacherAnalytics() {
   }
 
   const selectedClass = classes.find((c) => String(c.id) === selectedClassId)
-  const csvLabel = selectedClass ? (selectedClass.class_code || selectedClass.subject_name || selectedClass.class_name) : "class"
+  const csvLabel = selectedClass
+    ? selectedClass.class_code ||
+      selectedClass.subject_name ||
+      selectedClass.class_name
+    : "class"
 
   if (classesLoading) {
-    return <div className="flex items-center justify-center min-h-screen"><p className="text-gray-500">Loading...</p></div>
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <p className="text-gray-500">Loading...</p>
+      </div>
+    )
   }
 
   return (
@@ -419,23 +597,38 @@ export default function TeacherAnalytics() {
 
       <main className="md:pl-64 transition-[padding] duration-300 py-6 px-4 sm:px-6 lg:px-8">
         <div className="max-w-6xl mx-auto space-y-6">
-
           {/* Header + class selector */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
             <div className="flex items-center gap-3">
               <div>
-                <h1 className="text-2xl font-bold text-gray-900">Class Analytics</h1>
-                <p className="text-sm text-gray-500">Attendance insights per class</p>
+                <h1 className="text-2xl font-bold text-gray-900">
+                  Class Analytics
+                </h1>
+                <p className="text-sm text-gray-500">
+                  Attendance insights per class
+                </p>
               </div>
               {trendDirection && (
-                <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
-                  trendDirection === "up" ? "bg-green-100 text-green-700" :
-                  trendDirection === "down" ? "bg-red-100 text-red-700" :
-                  "bg-gray-100 text-gray-500"
-                }`}>
-                  {trendDirection === "up" && <TrendingUp className="w-3 h-3" />}
-                  {trendDirection === "down" && <TrendingDown className="w-3 h-3" />}
-                  {trendDirection === "up" ? "Improving" : trendDirection === "down" ? "Declining" : "Stable"}
+                <span
+                  className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-semibold ${
+                    trendDirection === "up"
+                      ? "bg-green-100 text-green-700"
+                      : trendDirection === "down"
+                        ? "bg-red-100 text-red-700"
+                        : "bg-gray-100 text-gray-500"
+                  }`}
+                >
+                  {trendDirection === "up" && (
+                    <TrendingUp className="w-3 h-3" />
+                  )}
+                  {trendDirection === "down" && (
+                    <TrendingDown className="w-3 h-3" />
+                  )}
+                  {trendDirection === "up"
+                    ? "Improving"
+                    : trendDirection === "down"
+                      ? "Declining"
+                      : "Stable"}
                 </span>
               )}
             </div>
@@ -456,10 +649,11 @@ export default function TeacherAnalytics() {
           {/* Filter bar */}
           {overview && (
             <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-3">
-
               {/* Quick preset buttons */}
               <div className="flex flex-wrap gap-2">
-                <span className="text-xs font-medium text-gray-400 self-center mr-1">Quick:</span>
+                <span className="text-xs font-medium text-gray-400 self-center mr-1">
+                  Quick:
+                </span>
                 {PRESETS.map((p) => (
                   <button
                     key={p.key}
@@ -478,43 +672,65 @@ export default function TeacherAnalytics() {
               {/* Manual date inputs + student status + clear */}
               <div className="flex flex-wrap items-end gap-4">
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500">Date From</label>
+                  <label className="text-xs font-medium text-gray-500">
+                    Date From
+                  </label>
                   <input
                     type="date"
                     value={dateFrom}
-                    onChange={(e) => { setDateFrom(e.target.value); setActivePreset("") }}
+                    onChange={(e) => {
+                      setDateFrom(e.target.value)
+                      setActivePreset("")
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500">Date To</label>
+                  <label className="text-xs font-medium text-gray-500">
+                    Date To
+                  </label>
                   <input
                     type="date"
                     value={dateTo}
-                    onChange={(e) => { setDateTo(e.target.value); setActivePreset("") }}
+                    onChange={(e) => {
+                      setDateTo(e.target.value)
+                      setActivePreset("")
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500">Time From</label>
+                  <label className="text-xs font-medium text-gray-500">
+                    Time From
+                  </label>
                   <input
                     type="time"
                     value={timeFrom}
-                    onChange={(e) => { setTimeFrom(e.target.value); setActivePreset("") }}
+                    onChange={(e) => {
+                      setTimeFrom(e.target.value)
+                      setActivePreset("")
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500">Time To</label>
+                  <label className="text-xs font-medium text-gray-500">
+                    Time To
+                  </label>
                   <input
                     type="time"
                     value={timeTo}
-                    onChange={(e) => { setTimeTo(e.target.value); setActivePreset("") }}
+                    onChange={(e) => {
+                      setTimeTo(e.target.value)
+                      setActivePreset("")
+                    }}
                     className="border border-gray-300 rounded-lg px-3 py-2 text-sm bg-white focus:outline-none focus:ring-2 focus:ring-black"
                   />
                 </div>
                 <div className="flex flex-col gap-1">
-                  <label className="text-xs font-medium text-gray-500">Student Status</label>
+                  <label className="text-xs font-medium text-gray-500">
+                    Student Status
+                  </label>
                   <select
                     value={studentStatus}
                     onChange={(e) => setStudentStatus(e.target.value)}
@@ -537,67 +753,203 @@ export default function TeacherAnalytics() {
             </div>
           )}
 
-          {error && <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">{error}</div>}
-          {loading && <div className="text-center py-16 text-gray-400">Loading analytics...</div>}
+          {error && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+              {error}
+            </div>
+          )}
+          {loading && (
+            <div className="text-center py-16 text-gray-400">
+              Loading analytics...
+            </div>
+          )}
 
           {!loading && filteredOverview && (
             <>
               {/* Stat cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard label="Class Attendance Rate" value={`${filteredOverview.avg_attendance_rate}%`} sub="Average across filtered sessions · Late counts as attended" icon={TrendingUp} color="blue" />
-                <StatCard label="Sessions Held" value={filteredOverview.total_sessions} sub={(dateFrom || dateTo || timeFrom || timeTo) ? "Filtered sessions" : "Ended sessions"} icon={Calendar} color="gray" />
-                <StatCard label="Students Enrolled" value={filteredOverview.total_enrolled} icon={Users} color="gray" />
-                <StatCard label="Students Below 75%" value={atRiskCount} sub="Need attention" icon={AlertTriangle} color={atRiskCount > 0 ? "red" : "green"} />
+                <StatCard
+                  label="Class Attendance Rate"
+                  value={`${filteredOverview.avg_attendance_rate}%`}
+                  sub="Average across filtered sessions · Late counts as attended"
+                  icon={TrendingUp}
+                  color="blue"
+                />
+                <StatCard
+                  label="Sessions Held"
+                  value={filteredOverview.total_sessions}
+                  sub={
+                    dateFrom || dateTo || timeFrom || timeTo
+                      ? "Filtered sessions"
+                      : "Ended sessions"
+                  }
+                  icon={Calendar}
+                  color="gray"
+                />
+                <StatCard
+                  label="Students Enrolled"
+                  value={filteredOverview.total_enrolled}
+                  icon={Users}
+                  color="gray"
+                />
+                <StatCard
+                  label="Students Below 75%"
+                  value={atRiskCount}
+                  sub="Need attention"
+                  icon={AlertTriangle}
+                  color={atRiskCount > 0 ? "red" : "green"}
+                />
               </div>
 
               <div className="grid grid-cols-3 gap-4">
-                <StatCard label="Highest Session Rate" value={`${filteredOverview.best_session_rate}%`} sub="Best performing session" icon={Award} color="green" />
-                <StatCard label="Lowest Session Rate" value={`${filteredOverview.worst_session_rate}%`} sub="Worst performing session" icon={TrendingDown} color="red" />
+                <StatCard
+                  label="Highest Session Rate"
+                  value={`${filteredOverview.best_session_rate}%`}
+                  sub="Best performing session"
+                  icon={Award}
+                  color="green"
+                />
+                <StatCard
+                  label="Lowest Session Rate"
+                  value={`${filteredOverview.worst_session_rate}%`}
+                  sub="Worst performing session"
+                  icon={TrendingDown}
+                  color="red"
+                />
                 <div className="rounded-xl border border-gray-200 bg-gray-50 p-5">
-                  <p className="text-sm font-medium text-gray-600 mb-3">Total Records</p>
+                  <p className="text-sm font-medium text-gray-600 mb-3">
+                    Total Records
+                  </p>
                   <div className="flex gap-4">
-                    <div><p className="text-xs text-gray-400">Present</p><p className="text-xl font-bold text-green-600">{filteredOverview.total_present}</p></div>
-                    <div><p className="text-xs text-gray-400">Late</p><p className="text-xl font-bold text-yellow-500">{filteredOverview.total_late}</p></div>
-                    <div><p className="text-xs text-gray-400">Absent</p><p className="text-xl font-bold text-red-500">{filteredOverview.total_absent}</p></div>
+                    <div>
+                      <p className="text-xs text-gray-400">Present</p>
+                      <p className="text-xl font-bold text-green-600">
+                        {filteredOverview.total_present}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">Late</p>
+                      <p className="text-xl font-bold text-yellow-500">
+                        {filteredOverview.total_late}
+                      </p>
+                    </div>
+                    <div>
+                      <p className="text-xs text-gray-400">Absent</p>
+                      <p className="text-xl font-bold text-red-500">
+                        {filteredOverview.total_absent}
+                      </p>
+                    </div>
                   </div>
                 </div>
               </div>
 
               {/* Charts */}
-              {(filteredTrend.length > 0 || filteredOverview.total_present + filteredOverview.total_late + filteredOverview.total_absent > 0) && (
+              {(filteredTrend.length > 0 ||
+                filteredOverview.total_present +
+                  filteredOverview.total_late +
+                  filteredOverview.total_absent >
+                  0) && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {filteredTrend.length > 0 && (
                     <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-                      <h2 className="text-base font-semibold text-gray-900 mb-1">Session-by-Session Trend</h2>
-                      <p className="text-xs text-gray-400 mb-4">Present / Late / Absent counts (bars) + Attendance Rate % (line)</p>
+                      <h2 className="text-base font-semibold text-gray-900 mb-1">
+                        Session-by-Session Trend
+                      </h2>
+                      <p className="text-xs text-gray-400 mb-4">
+                        Present / Late / Absent counts (bars) + Attendance Rate
+                        % (line)
+                      </p>
                       <ResponsiveContainer width="100%" height={240}>
-                        <ComposedChart data={composedData} margin={{ top: 4, right: 30, left: -20, bottom: 0 }}>
-                          <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" />
+                        <ComposedChart
+                          data={composedData}
+                          margin={{ top: 4, right: 30, left: -20, bottom: 0 }}
+                        >
+                          <CartesianGrid
+                            strokeDasharray="3 3"
+                            stroke="#f0f0f0"
+                          />
                           <XAxis dataKey="name" tick={{ fontSize: 11 }} />
-                          <YAxis yAxisId="left" allowDecimals={false} tick={{ fontSize: 11 }} />
-                          <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
-                          <Tooltip formatter={(v, name) => name === "Rate %" ? `${v}%` : v} />
+                          <YAxis
+                            yAxisId="left"
+                            allowDecimals={false}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <YAxis
+                            yAxisId="right"
+                            orientation="right"
+                            domain={[0, 100]}
+                            tickFormatter={(v) => `${v}%`}
+                            tick={{ fontSize: 11 }}
+                          />
+                          <Tooltip
+                            formatter={(v, name) =>
+                              name === "Rate %" ? `${v}%` : v
+                            }
+                          />
                           <Legend wrapperStyle={{ fontSize: 12 }} />
-                          <Bar yAxisId="left" dataKey="Present" fill="#22c55e" radius={[3, 3, 0, 0]} />
-                          <Bar yAxisId="left" dataKey="Late" fill="#eab308" radius={[3, 3, 0, 0]} />
-                          <Bar yAxisId="left" dataKey="Absent" fill="#ef4444" radius={[3, 3, 0, 0]} />
-                          <Line yAxisId="right" type="monotone" dataKey="Rate %" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
+                          <Bar
+                            yAxisId="left"
+                            dataKey="Present"
+                            fill="#22c55e"
+                            radius={[3, 3, 0, 0]}
+                          />
+                          <Bar
+                            yAxisId="left"
+                            dataKey="Late"
+                            fill="#eab308"
+                            radius={[3, 3, 0, 0]}
+                          />
+                          <Bar
+                            yAxisId="left"
+                            dataKey="Absent"
+                            fill="#ef4444"
+                            radius={[3, 3, 0, 0]}
+                          />
+                          <Line
+                            yAxisId="right"
+                            type="monotone"
+                            dataKey="Rate %"
+                            stroke="#6366f1"
+                            strokeWidth={2}
+                            dot={{ r: 3 }}
+                            activeDot={{ r: 5 }}
+                          />
                         </ComposedChart>
                       </ResponsiveContainer>
                     </div>
                   )}
-                  {(filteredOverview.total_present + filteredOverview.total_late + filteredOverview.total_absent > 0) && (
+                  {filteredOverview.total_present +
+                    filteredOverview.total_late +
+                    filteredOverview.total_absent >
+                    0 && (
                     <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-                      <h2 className="text-base font-semibold text-gray-900 mb-1">Overall Breakdown</h2>
-                      <p className="text-xs text-gray-400 mb-4">All sessions combined</p>
+                      <h2 className="text-base font-semibold text-gray-900 mb-1">
+                        Overall Breakdown
+                      </h2>
+                      <p className="text-xs text-gray-400 mb-4">
+                        All sessions combined
+                      </p>
                       <div className="flex-1 flex items-center justify-center">
                         <ResponsiveContainer width="100%" height={200}>
                           <PieChart>
-                            <Pie data={pieData} cx="50%" cy="50%" innerRadius={50} outerRadius={80} paddingAngle={3} dataKey="value">
-                              {pieData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i]} />)}
+                            <Pie
+                              data={pieData}
+                              cx="50%"
+                              cy="50%"
+                              innerRadius={50}
+                              outerRadius={80}
+                              paddingAngle={3}
+                              dataKey="value"
+                            >
+                              {pieData.map((_, i) => (
+                                <Cell key={i} fill={PIE_COLORS[i]} />
+                              ))}
                             </Pie>
                             <Tooltip formatter={(v, name) => [`${v}`, name]} />
-                            <Legend iconType="circle" wrapperStyle={{ fontSize: 12 }} />
+                            <Legend
+                              iconType="circle"
+                              wrapperStyle={{ fontSize: 12 }}
+                            />
                           </PieChart>
                         </ResponsiveContainer>
                       </div>
@@ -609,7 +961,11 @@ export default function TeacherAnalytics() {
               {filteredTrend.length === 0 && (
                 <div className="bg-white rounded-xl border border-gray-200 p-10 text-center text-gray-400">
                   <Calendar className="w-10 h-10 mx-auto mb-3 opacity-40" />
-                  <p className="text-sm">{dateFrom || dateTo ? "No sessions found in the selected date range." : "No ended sessions yet for this class."}</p>
+                  <p className="text-sm">
+                    {dateFrom || dateTo
+                      ? "No sessions found in the selected date range."
+                      : "No ended sessions yet for this class."}
+                  </p>
                 </div>
               )}
 
@@ -617,37 +973,76 @@ export default function TeacherAnalytics() {
               {allStudents.length > 0 && (
                 <div className="bg-white rounded-xl border border-gray-200 p-5">
                   <div className="flex items-center justify-between mb-1">
-                    <h2 className="text-base font-semibold text-gray-900">Student Attendance Summary</h2>
+                    <h2 className="text-base font-semibold text-gray-900">
+                      Student Attendance Summary
+                    </h2>
                     <div className="flex items-center gap-3">
-                      <span className="text-xs text-gray-400">{filteredStudents.length} of {allStudents.length} students</span>
+                      <span className="text-xs text-gray-400">
+                        {filteredStudents.length} of {allStudents.length}{" "}
+                        students
+                      </span>
                       <button
-                        onClick={() => exportCsv(filteredStudents, csvLabel, filteredTrend, recordsBySession)}
+                        onClick={() =>
+                          exportCsv(
+                            filteredStudents,
+                            csvLabel,
+                            filteredTrend,
+                            recordsBySession,
+                          )
+                        }
                         className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg px-2.5 py-1.5 hover:bg-gray-50"
                       >
                         <Download className="w-3 h-3" /> Export CSV
                       </button>
                       <button
-                        onClick={() => exportPdf(filteredStudents, csvLabel, filteredTrend, recordsBySession, filteredOverview, dateFrom, dateTo)}
+                        onClick={() =>
+                          exportPdf(
+                            filteredStudents,
+                            csvLabel,
+                            filteredTrend,
+                            recordsBySession,
+                            filteredOverview,
+                            dateFrom,
+                            dateTo,
+                          )
+                        }
                         className="flex items-center gap-1 text-xs text-white bg-gray-800 hover:bg-black rounded-lg px-2.5 py-1.5"
                       >
                         <Download className="w-3 h-3" /> Export PDF
                       </button>
                     </div>
                   </div>
-                  <p className="text-xs text-gray-400 mb-4">Each student's attendance record · Click a row to see per-session check-in times · Click column headers to sort</p>
+                  <p className="text-xs text-gray-400 mb-4">
+                    Each student's attendance record · Click a row to see
+                    per-session check-in times · Click column headers to sort
+                  </p>
                   {filteredStudents.length === 0 ? (
-                    <p className="text-sm text-gray-400 text-center py-6">No students match the selected filter.</p>
+                    <p className="text-sm text-gray-400 text-center py-6">
+                      No students match the selected filter.
+                    </p>
                   ) : (
-                    <div className="overflow-x-auto">
+                    <div className="overflow-x-auto overflow-y-auto max-h-[28rem]">
                       <table className="w-full text-sm">
                         <thead>
                           <tr className="text-left text-xs text-gray-500 border-b">
                             {[
                               { key: "student_name", label: "Student" },
                               { key: "student_id", label: "ID" },
-                              { key: "present", label: "Present", cls: "text-green-600" },
-                              { key: "late", label: "Late", cls: "text-yellow-600" },
-                              { key: "absent", label: "Absent", cls: "text-red-500" },
+                              {
+                                key: "present",
+                                label: "Present",
+                                cls: "text-green-600",
+                              },
+                              {
+                                key: "late",
+                                label: "Late",
+                                cls: "text-yellow-600",
+                              },
+                              {
+                                key: "absent",
+                                label: "Absent",
+                                cls: "text-red-500",
+                              },
                               { key: "attendance_rate", label: "Rate" },
                             ].map(({ key, label, cls }) => (
                               <th
@@ -655,7 +1050,8 @@ export default function TeacherAnalytics() {
                                 className={`pb-2 pr-4 cursor-pointer select-none hover:text-gray-800 ${cls || ""}`}
                                 onClick={() => handleSort(key)}
                               >
-                                {label}<SortIcon col={key} />
+                                {label}
+                                <SortIcon col={key} />
                               </th>
                             ))}
                             <th className="pb-2">Status</th>
@@ -664,42 +1060,69 @@ export default function TeacherAnalytics() {
                         <tbody className="divide-y divide-gray-100">
                           {filteredStudents.map((s) => {
                             const isExpanded = expandedStudentId === s.id
-                            const sessionRows = filteredTrend.map((session, i) => {
-                              const rec = recordsBySession[session.session_id]?.[s.id]
-                              return {
-                                idx: i + 1,
-                                session_id: session.session_id,
-                                label: session.label,
-                                status: rec?.status || "absent",
-                                checked_in_at: rec?.checked_in_at || null,
-                              }
-                            })
+                            const sessionRows = filteredTrend.map(
+                              (session, i) => {
+                                const rec =
+                                  recordsBySession[session.session_id]?.[s.id]
+                                return {
+                                  idx: i + 1,
+                                  session_id: session.session_id,
+                                  label: session.label,
+                                  status: rec?.status || "absent",
+                                  checked_in_at: rec?.checked_in_at || null,
+                                }
+                              },
+                            )
                             return (
                               <>
                                 <tr
                                   key={s.id}
-                                  onClick={() => setExpandedStudentId(isExpanded ? null : s.id)}
+                                  onClick={() =>
+                                    setExpandedStudentId(
+                                      isExpanded ? null : s.id,
+                                    )
+                                  }
                                   className={`cursor-pointer transition ${
-                                    s.at_risk ? "bg-red-50 hover:bg-red-100" : "hover:bg-gray-50"
+                                    s.at_risk
+                                      ? "bg-red-50 hover:bg-red-100"
+                                      : "hover:bg-gray-50"
                                   }`}
                                 >
                                   <td className="py-2 pr-4 font-medium">
                                     <span className="inline-flex items-center gap-1">
-                                      {isExpanded
-                                        ? <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />
-                                        : <ChevronUp className="w-3 h-3 text-gray-400 shrink-0 -rotate-90" />}
+                                      {isExpanded ? (
+                                        <ChevronDown className="w-3 h-3 text-gray-400 shrink-0" />
+                                      ) : (
+                                        <ChevronUp className="w-3 h-3 text-gray-400 shrink-0 -rotate-90" />
+                                      )}
                                       {toTitleCase(s.student_name)}
                                     </span>
                                   </td>
-                                  <td className="py-2 pr-4 text-gray-500">{s.student_id}</td>
-                                  <td className="py-2 pr-4 text-green-600">{s.present}</td>
-                                  <td className="py-2 pr-4 text-yellow-600">{s.late}</td>
-                                  <td className="py-2 pr-4 text-red-500">{s.absent}</td>
-                                  <td className="py-2 pr-4 font-semibold">{s.attendance_rate}%</td>
+                                  <td className="py-2 pr-4 text-gray-500">
+                                    {s.student_id}
+                                  </td>
+                                  <td className="py-2 pr-4 text-green-600">
+                                    {s.present}
+                                  </td>
+                                  <td className="py-2 pr-4 text-yellow-600">
+                                    {s.late}
+                                  </td>
+                                  <td className="py-2 pr-4 text-red-500">
+                                    {s.absent}
+                                  </td>
+                                  <td className="py-2 pr-4 font-semibold">
+                                    {s.attendance_rate}%
+                                  </td>
                                   <td className="py-2">
-                                    {s.at_risk
-                                      ? <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">At Risk</span>
-                                      : <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">Good</span>}
+                                    {s.at_risk ? (
+                                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-red-100 text-red-700">
+                                        At Risk
+                                      </span>
+                                    ) : (
+                                      <span className="px-2 py-0.5 rounded-full text-xs font-semibold bg-green-100 text-green-700">
+                                        Good
+                                      </span>
+                                    )}
                                   </td>
                                 </tr>
                                 {isExpanded && (
@@ -709,29 +1132,67 @@ export default function TeacherAnalytics() {
                                         <table className="w-full text-xs">
                                           <thead>
                                             <tr className="text-left text-gray-400 border-b border-gray-200 bg-gray-100">
-                                              <th className="px-3 py-2 font-medium">#</th>
-                                              <th className="px-3 py-2 font-medium">Session Date</th>
-                                              <th className="px-3 py-2 font-medium">Check-in Time</th>
-                                              <th className="px-3 py-2 font-medium">Status</th>
+                                              <th className="px-3 py-2 font-medium">
+                                                #
+                                              </th>
+                                              <th className="px-3 py-2 font-medium">
+                                                Session Date
+                                              </th>
+                                              <th className="px-3 py-2 font-medium">
+                                                Check-in Time
+                                              </th>
+                                              <th className="px-3 py-2 font-medium">
+                                                Status
+                                              </th>
                                             </tr>
                                           </thead>
                                           <tbody>
                                             {sessionRows.map((sr) => (
-                                              <tr key={sr.session_id} className="border-b border-gray-100 last:border-0">
-                                                <td className="px-3 py-1.5 text-gray-400">{sr.idx}</td>
-                                                <td className="px-3 py-1.5 text-gray-600">{sr.label}</td>
+                                              <tr
+                                                key={sr.session_id}
+                                                className="border-b border-gray-100 last:border-0"
+                                              >
+                                                <td className="px-3 py-1.5 text-gray-400">
+                                                  {sr.idx}
+                                                </td>
                                                 <td className="px-3 py-1.5 text-gray-600">
-                                                  {sr.checked_in_at ?? <span className="text-gray-300">—</span>}
+                                                  {sr.label}
+                                                </td>
+                                                <td className="px-3 py-1.5 text-gray-600">
+                                                  {sr.checked_in_at ?? (
+                                                    <span className="text-gray-300">
+                                                      —
+                                                    </span>
+                                                  )}
                                                 </td>
                                                 <td className="px-3 py-1.5">
-                                                  {sr.status === "present" && <span className="text-green-600 font-semibold">Present</span>}
-                                                  {sr.status === "late"    && <span className="text-yellow-600 font-semibold">Late</span>}
-                                                  {sr.status === "absent"  && <span className="text-red-500 font-semibold">Absent</span>}
+                                                  {sr.status === "present" && (
+                                                    <span className="text-green-600 font-semibold">
+                                                      Present
+                                                    </span>
+                                                  )}
+                                                  {sr.status === "late" && (
+                                                    <span className="text-yellow-600 font-semibold">
+                                                      Late
+                                                    </span>
+                                                  )}
+                                                  {sr.status === "absent" && (
+                                                    <span className="text-red-500 font-semibold">
+                                                      Absent
+                                                    </span>
+                                                  )}
                                                 </td>
                                               </tr>
                                             ))}
                                             {sessionRows.length === 0 && (
-                                              <tr><td colSpan={4} className="px-3 py-3 text-gray-400 text-center">No sessions in selected range.</td></tr>
+                                              <tr>
+                                                <td
+                                                  colSpan={4}
+                                                  className="px-3 py-3 text-gray-400 text-center"
+                                                >
+                                                  No sessions in selected range.
+                                                </td>
+                                              </tr>
                                             )}
                                           </tbody>
                                         </table>
@@ -752,7 +1213,9 @@ export default function TeacherAnalytics() {
           )}
 
           {!loading && !filteredOverview && !error && selectedClassId && (
-            <div className="text-center py-16 text-gray-400 text-sm">No data available.</div>
+            <div className="text-center py-16 text-gray-400 text-sm">
+              No data available.
+            </div>
           )}
         </div>
       </main>

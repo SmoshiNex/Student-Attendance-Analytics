@@ -895,6 +895,11 @@ class Attendance
             $present = (int)$row['present_count'];
             $late    = (int)$row['late_count'];
             $absent  = (int)$row['absent_count'];
+            // If absent records are missing (e.g. session closed without mark-absent step),
+            // derive absent count from total sessions minus attended
+            if ($absent === 0 && $totalSessions > 0 && ($present + $late) < $totalSessions) {
+                $absent = $totalSessions - $present - $late;
+            }
             $rate    = $totalSessions > 0 ? round((($present + $late) / $totalSessions) * 100, 1) : 0;
             return [
                 'id'              => (int)$row['id'],
@@ -1188,7 +1193,7 @@ class Attendance
         // QUERY PURPOSE: Fetches all classes for this teacher to build
         //   the dashboard class list (TodayClasses component).
         // ============================================================
-        $classQuery = "SELECT id, class_code, class_name, subject_name, schedule, room
+        $classQuery = "SELECT id, class_code, class_name, subject_name, schedule, room, enrollment_code
                        FROM {$this->classTable}
                        WHERE teacher_id = :teacher_id
                        ORDER BY id ASC";
@@ -1280,6 +1285,7 @@ class Attendance
                 'id' => $classId,
                 'code' => $class['class_code'],
                 'name' => $class['subject_name'] ?: $class['class_name'],
+                'enrollment_code' => $class['enrollment_code'] ?? null,
                 'time' => $timeDisplay,
                 'status' => $status,
                 'total' => $enrolled,

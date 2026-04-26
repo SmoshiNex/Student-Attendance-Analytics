@@ -193,6 +193,49 @@ class TeacherClass
         ];
     }
 
+    public function enrollByCode($studentId, $enrollmentCode)
+    {
+        $enrollmentCode = trim((string)$enrollmentCode);
+
+        if ($enrollmentCode === '') {
+            return ['status' => 'error', 'message' => 'Enrollment code is required.', 'httpCode' => 422];
+        }
+
+        // Find class by enrollment code
+        $stmt = $this->conn->prepare(
+            "SELECT id, class_code, class_name, subject_name, schedule, room
+             FROM {$this->table}
+             WHERE enrollment_code = :code LIMIT 1"
+        );
+        $stmt->execute([':code' => $enrollmentCode]);
+        $class = $stmt->fetch(PDO::FETCH_ASSOC);
+
+        if (!$class) {
+            return ['status' => 'error', 'message' => 'Invalid enrollment code. No class found.', 'httpCode' => 422];
+        }
+
+        $classId = (int)$class['id'];
+
+        if ($this->isStudentEnrolled($classId, $studentId)) {
+            return ['status' => 'error', 'message' => 'You are already enrolled in this class.', 'httpCode' => 422];
+        }
+
+        $this->enrollStudent($classId, $studentId);
+
+        return [
+            'status'  => 'success',
+            'message' => 'Enrolled successfully.',
+            'class'   => [
+                'id'           => $classId,
+                'class_code'   => $class['class_code'],
+                'class_name'   => $class['class_name'],
+                'subject_name' => $class['subject_name'],
+                'schedule'     => $class['schedule'],
+                'room'         => $class['room'],
+            ],
+        ];
+    }
+
     public function unenroll($classId, $studentId)
     {
         if (!$this->isStudentEnrolled($classId, $studentId)) {

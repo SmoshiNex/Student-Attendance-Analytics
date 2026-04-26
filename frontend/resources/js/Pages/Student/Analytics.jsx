@@ -372,7 +372,16 @@ export default function StudentAnalytics() {
                     <ResponsiveContainer width="100%" height={200}>
                       <RadialBarChart cx="50%" cy="50%" innerRadius={20} outerRadius={90} data={radialData} startAngle={90} endAngle={-270}>
                         <RadialBar dataKey="rate" cornerRadius={4} label={{ position: "insideStart", fill: "#fff", fontSize: 10 }} />
-                        <Tooltip formatter={(v) => `${v}%`} />
+                        <Tooltip content={({ active, payload }) => {
+                          if (!active || !payload?.length) return null
+                          const d = payload[0]?.payload
+                          return (
+                            <div className="bg-white border border-gray-200 rounded-lg px-3 py-2 text-xs shadow">
+                              <p className="font-semibold text-gray-800">{d?.name}</p>
+                              <p style={{ color: d?.fill }}>{d?.rate}%</p>
+                            </div>
+                          )
+                        }} />
                         <Legend iconSize={10} formatter={(value, entry) => `${entry.payload.name} ${entry.payload.rate}%`} wrapperStyle={{ fontSize: 11 }} />
                       </RadialBarChart>
                     </ResponsiveContainer>
@@ -394,8 +403,8 @@ export default function StudentAnalytics() {
                     <YAxis yAxisId="right" orientation="right" domain={[0, 100]} tickFormatter={(v) => `${v}%`} tick={{ fontSize: 11 }} />
                     <Tooltip formatter={(v, name) => name === "Rate %" ? `${v}%` : v} />
                     <Legend wrapperStyle={{ fontSize: 12 }} />
-                    <Bar yAxisId="left" dataKey="Attended" fill="#22c55e" radius={[3, 3, 0, 0]} />
-                    <Bar yAxisId="left" dataKey="Missed"   fill="#ef4444" radius={[3, 3, 0, 0]} />
+                    <Bar yAxisId="left" dataKey="Attended" fill="#22c55e" radius={[3, 3, 0, 0]} maxBarSize={60} />
+                    <Bar yAxisId="left" dataKey="Missed"   fill="#ef4444" radius={[3, 3, 0, 0]} maxBarSize={60} />
                     <Line yAxisId="right" type="monotone" dataKey="Rate %" stroke="#6366f1" strokeWidth={2} dot={{ r: 3 }} activeDot={{ r: 5 }} />
                   </ComposedChart>
                 </ResponsiveContainer>
@@ -407,7 +416,7 @@ export default function StudentAnalytics() {
               <div className="bg-white rounded-xl border border-gray-200 p-5">
                 <h2 className="text-base font-semibold text-gray-900 mb-1">Attendance Per Class</h2>
                 <p className="text-xs text-gray-400 mb-4">Click a class to expand its full session breakdown and check-in times</p>
-                <div className="space-y-3">
+                <div className="space-y-3 max-h-[500px] overflow-y-auto pr-1">
                   {allClasses.map((c) => {
                     const isExpanded = expandedClassId === String(c.class_id)
                     const timeline   = timelineByClass[String(c.class_id)] || []

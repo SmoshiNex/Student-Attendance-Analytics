@@ -49,6 +49,14 @@ export default function ClassCard({
             </h2>
           </div>
           <p className="text-gray-600">{classItem.subject_name}</p>
+          {classItem.enrollment_code && (
+            <p className="text-xs text-gray-700 mt-1">
+              Enrollment Code:{" "}
+              <span className="font-semibold tracking-wide">
+                {classItem.enrollment_code}
+              </span>
+            </p>
+          )}
           <p className="text-sm text-gray-500 mt-2">{classItem.schedule}</p>
           {classItem.room && (
             <p className="text-sm text-gray-500">Room: {classItem.room}</p>

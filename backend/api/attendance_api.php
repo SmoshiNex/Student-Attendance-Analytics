@@ -7,26 +7,9 @@ require_once '../class/SessionConfig.php';
 
 header('Content-Type: application/json');
 
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (
-    $origin !== '' &&
-    preg_match(
-        '/^https?:\/\/((localhost|127\.0\.0\.1)|(10\.\d{1,3}\.\d{1,3}\.\d{1,3})|(192\.168\.\d{1,3}\.\d{1,3})|(172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}))(:\d+)?$/i',
-        $origin
-    )
-) {
-    header('Access-Control-Allow-Origin: ' . $origin);
-    header('Access-Control-Allow-Credentials: true');
-    header('Vary: Origin');
-}
-
+require_once 'cors.php';
 header('Access-Control-Allow-Headers: Content-Type, X-Requested-With, X-Client-Time');
 header('Access-Control-Allow-Methods: GET, POST, PUT, PATCH, DELETE, OPTIONS');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
 
 function sendJsonResponse($status, $message, $data = null, $httpCode = 200)
 {

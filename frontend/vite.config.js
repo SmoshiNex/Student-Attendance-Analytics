@@ -36,6 +36,16 @@ export default defineConfig(({ mode }) => {
           changeOrigin: true,
           secure: false,
         },
+        "/Student%20Attedance%20Analytics/public/uploads": {
+          target: "http://127.0.0.1:80",
+          changeOrigin: true,
+          secure: false,
+        },
+        "/Student Attedance Analytics/public/uploads": {
+          target: "http://127.0.0.1:80",
+          changeOrigin: true,
+          secure: false,
+        },
       },
     },
   }

@@ -117,7 +117,7 @@ export default function TeacherDashboard() {
 
   const refreshDashboardStats = () => {
     axios
-      .get(attendanceApiUrl("dashboard"), { withCredentials: true })
+      .get(attendanceApiUrl("dashboard"), { withCredentials: true, silent: true })
       .then((statsRes) => {
         const s = statsRes.data
         setStats({

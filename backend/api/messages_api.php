@@ -13,30 +13,8 @@ error_reporting(E_ALL);
 
 require_once '../class/SessionConfig.php';
 
-// Content-Type is set per-action below (upload_attachment uses multipart)
-
-// ── CORS (same pattern as every other API file) ──────────────
-$origin = $_SERVER['HTTP_ORIGIN'] ?? '';
-if (
-    $origin !== '' &&
-    preg_match(
-        '/^https?:\/\/((localhost|127\.0\.0\.1)|(10\.\d{1,3}\.\d{1,3}\.\d{1,3})|(192\.168\.\d{1,3}\.\d{1,3})|(172\.(1[6-9]|2\d|3[0-1])\.\d{1,3}\.\d{1,3}))(:\d+)?$/i',
-        $origin
-    )
-) {
-    header('Access-Control-Allow-Origin: ' . $origin);
-    header('Access-Control-Allow-Credentials: true');
-    header('Vary: Origin');
-}
-
-header('Access-Control-Allow-Headers: Content-Type, X-Requested-With');
-header('Access-Control-Allow-Methods: GET, POST, OPTIONS');
+require_once 'cors.php';
 header('Content-Type: application/json');
-
-if ($_SERVER['REQUEST_METHOD'] === 'OPTIONS') {
-    http_response_code(204);
-    exit;
-}
 
 // ── Helpers ───────────────────────────────────────────────────
 function sendJsonResponse($status, $message, $data = null, $httpCode = 200)
@@ -123,6 +101,34 @@ try {
             if ($method !== 'POST') throw new Exception('Method not supported.');
 
             $result = $messageService->markRead($payload);
+            sendJsonResponse(
+                $result['status'],
+                $result['message'],
+                extractResponseData($result),
+                $result['httpCode'] ?? 200
+            );
+            break;
+
+        // ── POST /messages_api.php?action=send_message ────────
+        // Send a message with optional reply_to_id.
+        case 'send_message':
+            if ($method !== 'POST') throw new Exception('Method not supported.');
+
+            $result = $messageService->createMessage($payload);
+            sendJsonResponse(
+                $result['status'],
+                $result['message'],
+                extractResponseData($result),
+                $result['httpCode'] ?? 200
+            );
+            break;
+
+        // ── POST /messages_api.php?action=delete_conversation ─
+        // Delete conversation for current user only (your side).
+        case 'delete_conversation':
+            if ($method !== 'POST') throw new Exception('Method not supported.');
+
+            $result = $messageService->deleteConversation($payload);
             sendJsonResponse(
                 $result['status'],
                 $result['message'],

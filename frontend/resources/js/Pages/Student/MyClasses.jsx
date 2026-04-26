@@ -1,8 +1,19 @@
-import { BookOpen, User, Clock, Calendar, Users, LogOut } from "lucide-react"
+import {
+  BookOpen,
+  User,
+  Clock,
+  Calendar,
+  Users,
+  LogOut,
+  Plus,
+  X,
+} from "lucide-react"
 import { useEffect, useState } from "react"
 import { useNavigate } from "react-router-dom"
 import axios from "axios"
 import { authApiUrl, teacherClassApiUrl } from "@/lib/nativeApi"
+import { ConfirmModal } from "@/Components/ui/AppModals"
+import { toast } from "@/lib/toast"
 import Header from "./DashboardUI/Header"
 
 export default function StudentMyClasses() {
@@ -11,7 +22,11 @@ export default function StudentMyClasses() {
   const [loading, setLoading] = useState(true)
   const [confirmId, setConfirmId] = useState(null)
   const [unenrolling, setUnenrolling] = useState(false)
-  const [unenrollError, setUnenrollError] = useState("")
+
+  // Enroll by code modal state
+  const [showEnrollModal, setShowEnrollModal] = useState(false)
+  const [enrollCode, setEnrollCode] = useState("")
+  const [enrolling, setEnrolling] = useState(false)
 
   useEffect(() => {
     axios
@@ -38,18 +53,73 @@ export default function StudentMyClasses() {
   }, [navigate])
 
   const handleUnenroll = async (classId) => {
+    if (!classId || unenrolling) return
+    const targetClass = classes.find((c) => Number(c.id) === Number(classId))
+    const classLabel =
+      targetClass?.class_code ||
+      targetClass?.subject_name ||
+      targetClass?.class_name ||
+      "this class"
+
     setUnenrolling(true)
-    setUnenrollError("")
     try {
-      await axios.delete(teacherClassApiUrl({ action: "unenroll", class_id: classId }), { withCredentials: true })
+      await axios.delete(
+        teacherClassApiUrl({ action: "unenroll", class_id: classId }),
+        { withCredentials: true },
+      )
       setClasses((prev) => prev.filter((c) => c.id !== classId))
       setConfirmId(null)
+      toast.success(
+        "Unenrolled",
+        `You have been unenrolled from ${classLabel}.`,
+      )
     } catch (err) {
-      setUnenrollError(err?.response?.data?.message || "Failed to unenroll. Please try again.")
+      toast.error(
+        "Failed to Unenroll",
+        err?.response?.data?.message || "Failed to unenroll. Please try again.",
+      )
     } finally {
       setUnenrolling(false)
     }
   }
+
+  const refreshClasses = () => {
+    axios
+      .get(teacherClassApiUrl({ action: "my_classes" }), {
+        withCredentials: true,
+      })
+      .then((res) => setClasses(res.data?.classes || []))
+      .catch(console.error)
+  }
+
+  const handleEnroll = async (e) => {
+    e.preventDefault()
+    if (!enrollCode.trim() || enrolling) return
+    setEnrolling(true)
+    try {
+      const res = await axios.post(
+        teacherClassApiUrl({ action: "enroll_by_code" }),
+        { enrollment_code: enrollCode.trim() },
+        { withCredentials: true },
+      )
+      const cls = res.data?.class
+      const label = cls?.class_code || cls?.subject_name || "the class"
+      toast.success("Enrolled!", `You have been enrolled in ${label}.`)
+      setShowEnrollModal(false)
+      setEnrollCode("")
+      refreshClasses()
+    } catch (err) {
+      toast.error(
+        "Enrollment Failed",
+        err?.response?.data?.message ||
+          "Invalid enrollment code. Please try again.",
+      )
+    } finally {
+      setEnrolling(false)
+    }
+  }
+
+  const selectedClass = classes.find((c) => Number(c.id) === Number(confirmId))
 
   if (loading) {
     return (
@@ -65,10 +135,23 @@ export default function StudentMyClasses() {
 
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-6">
         <div className="mb-6">
-          <h1 className="text-2xl font-bold text-gray-900">
-            My Enrolled Classes
-          </h1>
-          <p className="text-sm text-gray-500">View all your classes</p>
+          <div className="flex items-center justify-between">
+            <div>
+              <h1 className="text-2xl font-bold text-gray-900">
+                My Enrolled Classes
+              </h1>
+              <p className="text-sm text-gray-500">View all your classes</p>
+            </div>
+            <button
+              onClick={() => {
+                setShowEnrollModal(true)
+                setEnrollCode("")
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-black text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Join Class
+            </button>
+          </div>
         </div>
 
         {classes.length > 0 ? (
@@ -117,36 +200,13 @@ export default function StudentMyClasses() {
                       </div>
                     )}
 
-                    {confirmId === classItem.id ? (
-                      <div className="mt-4 p-3 bg-red-50 border border-red-200 rounded-xl">
-                        <p className="text-sm font-medium text-red-700 mb-2">Are you sure you want to unenroll from this class?</p>
-                        {unenrollError && <p className="text-xs text-red-600 mb-2">{unenrollError}</p>}
-                        <div className="flex gap-2">
-                          <button
-                            onClick={() => handleUnenroll(classItem.id)}
-                            disabled={unenrolling}
-                            className="flex-1 py-1.5 text-sm font-semibold bg-red-600 hover:bg-red-700 text-white rounded-lg transition-colors disabled:opacity-50"
-                          >
-                            {unenrolling ? "Unenrolling..." : "Yes, Unenroll"}
-                          </button>
-                          <button
-                            onClick={() => { setConfirmId(null); setUnenrollError("") }}
-                            disabled={unenrolling}
-                            className="flex-1 py-1.5 text-sm font-semibold bg-white border border-gray-300 hover:bg-gray-50 text-gray-700 rounded-lg transition-colors"
-                          >
-                            Cancel
-                          </button>
-                        </div>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => { setConfirmId(classItem.id); setUnenrollError("") }}
-                        className="mt-4 flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
-                      >
-                        <LogOut className="w-4 h-4" />
-                        Unenroll
-                      </button>
-                    )}
+                    <button
+                      onClick={() => setConfirmId(classItem.id)}
+                      className="mt-4 flex items-center gap-1.5 text-sm text-red-500 hover:text-red-700 font-medium transition-colors"
+                    >
+                      <LogOut className="w-4 h-4" />
+                      Unenroll
+                    </button>
 
                     <div className="mt-4 rounded-xl border border-gray-200 bg-gray-50 p-4">
                       <div className="flex items-center gap-2 text-sm font-semibold text-gray-700">
@@ -199,12 +259,95 @@ export default function StudentMyClasses() {
             <p className="text-sm text-gray-500 mb-6">
               You haven't enrolled in any classes yet.
             </p>
-            <p className="text-xs text-gray-400">
-              Ask your teacher for a class code to enroll.
-            </p>
+            <button
+              onClick={() => {
+                setShowEnrollModal(true)
+                setEnrollCode("")
+              }}
+              className="inline-flex items-center gap-2 px-5 py-2.5 bg-black text-white text-sm font-semibold rounded-xl hover:bg-gray-800 transition-colors"
+            >
+              <Plus className="w-4 h-4" /> Join a Class
+            </button>
           </div>
         )}
       </main>
+
+      <ConfirmModal
+        open={confirmId !== null}
+        title="Unenroll from Class"
+        message={
+          selectedClass
+            ? `Are you sure you want to unenroll from ${selectedClass.class_code}? You can rejoin only with a valid class code.`
+            : "Are you sure you want to unenroll from this class?"
+        }
+        confirmLabel={unenrolling ? "Unenrolling..." : "Unenroll"}
+        cancelLabel="Cancel"
+        danger={true}
+        onCancel={() => {
+          if (unenrolling) return
+          setConfirmId(null)
+        }}
+        onConfirm={() => {
+          if (confirmId === null || unenrolling) return
+          handleUnenroll(confirmId)
+        }}
+      />
+
+      {/* Enroll by code modal */}
+      {showEnrollModal && (
+        <>
+          <div
+            className="fixed inset-0 bg-black/50 z-[9000]"
+            onClick={() => {
+              if (!enrolling) {
+                setShowEnrollModal(false)
+              }
+            }}
+          />
+          <div className="fixed inset-0 flex items-center justify-center z-[9001] pointer-events-none px-4">
+            <div className="bg-white rounded-2xl p-6 w-full max-w-sm shadow-2xl pointer-events-auto">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="text-lg font-bold text-gray-900">
+                  Join a Class
+                </h3>
+                <button
+                  onClick={() => {
+                    if (!enrolling) {
+                      setShowEnrollModal(false)
+                    }
+                  }}
+                  className="text-gray-400 hover:text-gray-700"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+              <p className="text-sm text-gray-500 mb-4">
+                Enter the enrollment code given by your teacher.
+              </p>
+              <form onSubmit={handleEnroll} className="space-y-3">
+                <input
+                  type="text"
+                  value={enrollCode}
+                  onChange={(e) => {
+                    setEnrollCode(e.target.value)
+                  }}
+                  placeholder="Enter enrollment code"
+                  className="w-full border border-gray-300 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-black"
+                  disabled={enrolling}
+                  autoFocus
+                />
+                <button
+                  type="submit"
+                  disabled={!enrollCode.trim() || enrolling}
+                  className="w-full py-3 bg-black text-white font-semibold rounded-xl hover:bg-gray-800 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                >
+                  {enrolling ? "Enrolling..." : "Join Class"}
+                </button>
+              </form>
+            </div>
+          </div>
+        </>
+      )}
     </div>
   )
 }

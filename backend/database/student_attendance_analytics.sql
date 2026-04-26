@@ -70,6 +70,7 @@ CREATE TABLE teacher_classes (
 	updated_at DATETIME NULL,
 	PRIMARY KEY (id),
 	KEY idx_teacher_classes_teacher_id (teacher_id),
+	UNIQUE KEY uq_teacher_classes_enrollment_code (enrollment_code),
 	CONSTRAINT fk_teacher_classes_teacher
 		FOREIGN KEY (teacher_id)
 		REFERENCES teachers (id)
@@ -170,6 +171,8 @@ CREATE TABLE notification_logs (
 -- attachment_url      : public path to uploaded file (NULL if none)
 -- attachment_type     : 'image' | 'pdf' | 'file' (NULL if none)
 -- attachment_name     : original filename shown to the user (NULL if none)
+-- reply_to_id         : references messages.id for quoted/reply messages (NULL if none)
+-- deleted_for         : JSON array of user keys (e.g. ["teacher_1","student_2"]) who deleted this message on their side
 CREATE TABLE messages (
     id              BIGINT UNSIGNED  NOT NULL AUTO_INCREMENT,
     sender_type     ENUM('teacher','student') NOT NULL,
@@ -184,6 +187,8 @@ CREATE TABLE messages (
     is_read         TINYINT(1)       NOT NULL DEFAULT 0,
     created_at      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP,
     updated_at      DATETIME         NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+    reply_to_id     INT(11)          DEFAULT NULL,
+    deleted_for     LONGTEXT         DEFAULT NULL,
     PRIMARY KEY (id),
     KEY idx_messages_sender   (sender_type,   sender_id),
     KEY idx_messages_receiver (receiver_type, receiver_id),

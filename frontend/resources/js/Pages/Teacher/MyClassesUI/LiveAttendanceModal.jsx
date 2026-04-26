@@ -114,7 +114,7 @@ export default function LiveAttendanceModal({
     try {
       const response = await axios.get(
         attendanceApiUrl("live", { session_id: sessionId }),
-        { withCredentials: true },
+        { withCredentials: true, silent: true },
       )
       setRecords(response.data.records)
       setStats(response.data.stats)
@@ -202,7 +202,7 @@ export default function LiveAttendanceModal({
 
   // Calculate time remaining for on-time check-in
   useEffect(() => {
-    if (!session) return
+    if (!session?.id) return
 
     const tick = () => {
       const timing = sessionStartRef.current
@@ -286,7 +286,7 @@ export default function LiveAttendanceModal({
           onClose(open)
         }}
       >
-        <DialogContent className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
+        <DialogContent hideCloseButton={session?.status === "active"} className="w-[95vw] max-w-2xl max-h-[90vh] overflow-y-auto p-4 sm:p-6">
           <DialogHeader>
             <div className="flex-1">
               <DialogTitle>Live Attendance Session</DialogTitle>

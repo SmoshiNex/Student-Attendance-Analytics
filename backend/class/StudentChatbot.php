@@ -74,43 +74,137 @@ class StudentChatbot
             return null;
         }
 
+        // Improve attendance rate — check BEFORE general attendance
+        if ($this->containsAny($normalized, [
+            'improve my attendance', 'improve attendance', 'improve my rate', 'boost my attendance',
+            'increase my attendance', 'raise my attendance', 'how to improve', 'how can i improve',
+            'tips for attendance', 'attendance tips', 'how do i improve my attendance',
+        ])) {
+            return $this->buildImproveAttendanceReply($studentPkId);
+        }
+
+        // Missed check-in — check BEFORE general attendance
+        if ($this->containsAny($normalized, [
+            'missed a class', 'missed check-in', 'missed checkin', 'missed my check',
+            'forgot to check', 'did not check in', 'could not check in', 'cannot check in',
+            'missed the qr', 'did not scan', 'forgot to scan', 'could not scan',
+            'was not able to check', 'unable to check', 'missed session',
+        ])) {
+            return "If you missed a check-in, here is what you can do:\n"
+                . "1. Contact your teacher directly through the Messages page and explain the situation.\n"
+                . "2. Your teacher can manually mark your attendance as present or late from the Live Attendance panel.\n"
+                . "3. If the session has already ended, only your teacher can update your record.\n"
+                . "4. Make sure to attend the next session and scan the QR code on time to avoid further absences.";
+        }
+
+        // Late vs absent — check BEFORE general attendance
+        if ($this->containsAny($normalized, [
+            'late versus absent', 'late vs absent', 'counts as late', 'difference between late',
+            'what is late', 'what is absent', 'what counts as late', 'what counts as absent',
+            'late or absent', 'absent or late', 'difference between absent',
+            'what does late mean', 'what does absent mean', 'late mean', 'absent mean',
+            'how is late different', 'how is absent different',
+        ])) {
+            return "Here is how attendance status works in this portal:\n"
+                . "- PRESENT: You scanned the QR code within the allowed time window set by your teacher (e.g. first 15 minutes).\n"
+                . "- LATE: You scanned the QR code after the allowed time window but while the session was still active.\n"
+                . "- ABSENT: You did not scan the QR code at all before the teacher ended the session.\n\n"
+                . "Both Present and Late count as attended for your attendance rate calculation. Only Absent lowers your rate.";
+        }
+
         // Classes
         if (
-            $this->containsAny($normalized, ['enrolled', 'my class', 'my classes', 'my subjects']) ||
-            ($this->containsAny($normalized, ['what', 'which', 'show', 'list']) && $this->containsAny($normalized, ['class', 'classes', 'subject', 'subjects']))
+            $this->containsAny($normalized, [
+                'enrolled', 'my class', 'my classes', 'my subjects', 'my subject',
+                'my courses', 'my course', 'what classes', 'what subjects',
+                'show classes', 'list classes', 'view classes', 'see my classes',
+                'classes i have', 'subjects i have', 'what am i taking',
+            ]) ||
+            ($this->containsAny($normalized, ['what', 'which', 'show', 'list', 'view', 'see', 'give']) &&
+             $this->containsAny($normalized, ['class', 'classes', 'subject', 'subjects', 'course', 'courses']))
         ) {
             return $this->buildEnrolledClassesReply($studentPkId);
         }
 
         // Classmates
-        if ($this->containsAny($normalized, ['classmate', 'classmates', 'class roster', 'roster', 'students in my class', 'who is in my class'])) {
+        if ($this->containsAny($normalized, [
+            'classmate', 'classmates', 'class roster', 'roster',
+            'students in my class', 'who is in my class', 'who are in my class',
+            'my classmates', 'show classmates', 'list classmates',
+            'who else is in', 'other students', 'my peers', 'class members',
+            'who is enrolled', 'who are enrolled',
+        ])) {
             return $this->buildClassmatesReply($studentPkId);
         }
 
         // Teachers
-        if (
-            $this->containsAny($normalized, ['my teacher', 'my teachers', 'my instructor', 'my instructors', 'who teach', 'who is my teacher', 'who are my teachers'])
-        ) {
+        if ($this->containsAny($normalized, [
+            'my teacher', 'my teachers', 'my instructor', 'my instructors',
+            'who teach', 'who is my teacher', 'who are my teachers',
+            'who teaches', 'who is teaching', 'my professor', 'my professors',
+            'teacher name', 'instructor name', 'who handles',
+            'name of my teacher', 'name of my instructor',
+        ])) {
             return $this->buildTeachersReply($studentPkId);
         }
 
         // Attendance
-        if ($this->containsAny($normalized, ['attendance rate', 'attendance', 'present', 'late', 'absent', 'analytics', 'performance'])) {
+        if ($this->containsAny($normalized, [
+            'attendance rate', 'attendance', 'present', 'late', 'absent',
+            'analytics', 'performance', 'my record', 'my records',
+            'how many times', 'check in history', 'checkin history',
+            'attendance history', 'attendance summary', 'attendance status',
+            'am i at risk', 'at risk', 'below 75', 'passing rate',
+            'how often', 'times i was', 'times present', 'times absent',
+            'times late', 'my attendance', 'show attendance',
+        ])) {
             return $this->buildAttendanceSummaryReply($studentPkId);
         }
 
         // Notifications
-        if ($this->containsAny($normalized, ['notification', 'notifications', 'unread'])) {
+        if ($this->containsAny($normalized, [
+            'notification', 'notifications', 'unread',
+            'do i have notifications', 'any notifications', 'new notifications',
+            'unread notifications', 'check notifications', 'show notifications',
+            'any alerts', 'my alerts', 'any updates',
+        ])) {
             return $this->buildNotificationReply($studentPkId);
         }
 
         // Schedule
-        if ($this->containsAny($normalized, ['schedule', 'my schedule', 'class schedule', 'when is my class'])) {
+        if ($this->containsAny($normalized, [
+            'schedule', 'my schedule', 'class schedule', 'when is my class',
+            'when are my classes', 'class time', 'class times',
+            'what time is my class', 'what time is class',
+            'room', 'classroom', 'where is my class', 'class location',
+            'class room', 'what room',
+        ])) {
             return $this->buildScheduleReply($studentPkId);
         }
 
+        // QR check-in how-to
+        if ($this->containsAny($normalized, [
+            'how to check in', 'how do i check in', 'how to scan', 'how do i scan',
+            'qr code', 'scan qr', 'qr scan', 'check in process',
+            'how to mark attendance', 'how to record attendance',
+            'how does check in work', 'checking in',
+        ])) {
+            return "To check in for attendance:\n"
+                . "1. Go to your Dashboard and tap the SCAN TO CHECK-IN button.\n"
+                . "2. Allow camera access when prompted.\n"
+                . "3. Point your camera at the QR code displayed by your teacher.\n"
+                . "4. If scanned within the allowed time window, you will be marked PRESENT.\n"
+                . "5. If scanned after the window but before the session ends, you will be marked LATE.\n"
+                . "6. A confirmation screen will appear once your attendance is recorded.";
+        }
+
         // Help
-        if ($this->containsAny($normalized, ['help', 'how to', 'what can you do', 'what can you help'])) {
+        if ($this->containsAny($normalized, [
+            'help', 'how to', 'what can you do', 'what can you help',
+            'what do you do', 'what are you', 'who are you',
+            'what can i ask', 'what questions', 'guide me',
+            'assist me', 'i need help', 'can you help',
+        ])) {
             return $this->buildPortalHelpReply();
         }
 
@@ -301,6 +395,32 @@ class StudentChatbot
             . "- Checking unread notifications\n"
             . "- Explaining portal steps (QR check-in, history, analytics)\n\n"
             . "Try asking: \"what classes am I enrolled in?\", \"who are my classmates?\", or \"what is my attendance rate?\"";
+    }
+
+    private function buildImproveAttendanceReply($studentPkId)
+    {
+        $summary = $this->getAttendanceSummary($studentPkId);
+        $total   = (int)$summary['total'];
+        $present = (int)$summary['present'];
+        $late    = (int)$summary['late'];
+        $absent  = (int)$summary['absent'];
+        $rate    = $total > 0 ? round((($present + $late) / $total) * 100, 1) : 0;
+
+        $tips = "Here are tips to improve your attendance rate:\n"
+            . "1. Always scan the QR code as soon as your teacher opens the session to be marked Present.\n"
+            . "2. Arrive before the allowed check-in window closes to avoid being marked Late.\n"
+            . "3. If you cannot attend, message your teacher in advance through the Messages page.\n"
+            . "4. Check your Analytics page regularly to monitor your rate per class.\n"
+            . "5. If your rate drops below 75%, you will be flagged as At Risk — act quickly.";
+
+        if ($total <= 0) {
+            return $tips;
+        }
+
+        $status = $rate >= 75 ? 'Good Standing' : 'At Risk';
+        return "Your current overall attendance rate is {$rate}% ({$status}).\n"
+            . "Present: {$present} | Late: {$late} | Absent: {$absent} | Total: {$total}\n\n"
+            . $tips;
     }
 
     private function buildLimitedModeReply($studentPkId, $message, $reason)

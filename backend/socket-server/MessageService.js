@@ -69,7 +69,12 @@ class MessageService {
 
     let parsedUrl
     try {
-      parsedUrl = new URL(normalizedUrl)
+      // Accept relative paths (starting with /) as valid
+      if (normalizedUrl.startsWith('/')) {
+        parsedUrl = { protocol: 'https:' }
+      } else {
+        parsedUrl = new URL(normalizedUrl)
+      }
     } catch {
       throw new MessageValidationError("Attachment URL is invalid.")
     }
@@ -108,6 +113,7 @@ class MessageService {
       attachment_url,
       attachment_type,
       attachment_name,
+      reply_to_id,
     } = data || {}
 
     const normalizedSenderType = this.normalizeUserType(
@@ -153,6 +159,7 @@ class MessageService {
       attachment_url: attachmentFields.attachment_url,
       attachment_type: attachmentFields.attachment_type,
       attachment_name: attachmentFields.attachment_name,
+      reply_to_id: (reply_to_id && Number.isInteger(Number(reply_to_id)) && Number(reply_to_id) > 0) ? Number(reply_to_id) : null,
     }
   }
 
@@ -179,12 +186,13 @@ class MessageService {
     attachmentUrl,
     attachmentType,
     attachmentName,
+    replyToId,
   }) {
     const [result] = await this.pool.execute(
       `INSERT INTO messages
                 (sender_type, sender_id, receiver_type, receiver_id, class_id, message,
-                 attachment_url, attachment_type, attachment_name, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
+                 reply_to_id, attachment_url, attachment_type, attachment_name, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())`,
       [
         senderType,
         senderId,
@@ -192,6 +200,7 @@ class MessageService {
         receiverId,
         classId,
         message,
+        replyToId || null,
         attachmentUrl,
         attachmentType,
         attachmentName,
@@ -202,10 +211,14 @@ class MessageService {
 
   async fetchMessage(id) {
     const [rows] = await this.pool.execute(
-      `SELECT id, sender_type, sender_id, receiver_type, receiver_id,
-                    class_id, message, attachment_url, attachment_type, attachment_name,
-                    is_read, created_at
-             FROM messages WHERE id = ?`,
+      `SELECT m.id, m.sender_type, m.sender_id, m.receiver_type, m.receiver_id,
+                    m.class_id, m.message, m.attachment_url, m.attachment_type, m.attachment_name,
+                    m.is_read, m.created_at, m.reply_to_id,
+                    rm.message AS reply_message, rm.sender_type AS reply_sender_type,
+                    rm.attachment_type AS reply_attachment_type, rm.attachment_name AS reply_attachment_name
+             FROM messages m
+             LEFT JOIN messages rm ON rm.id = m.reply_to_id
+             WHERE m.id = ?`,
       [id],
     )
     return rows[0] || null
@@ -236,6 +249,7 @@ class MessageService {
       attachmentUrl: payload.attachment_url,
       attachmentType: payload.attachment_type,
       attachmentName: payload.attachment_name,
+      replyToId: payload.reply_to_id,
     })
 
     const saved = await this.fetchMessage(insertId)
