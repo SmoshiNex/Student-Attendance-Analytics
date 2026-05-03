@@ -33,7 +33,9 @@ export default function ReportsTable({ records = [], isLoading = false }) {
                 <TableRow>
                   <TableHead className="text-primary-foreground">Student Name</TableHead>
                   <TableHead className="text-primary-foreground">Student ID</TableHead>
-                  <TableHead className="text-primary-foreground">Class</TableHead>
+                  <TableHead className="text-primary-foreground">Section</TableHead>
+                  <TableHead className="text-primary-foreground">Class Code</TableHead>
+                  <TableHead className="text-primary-foreground">Subject Name</TableHead>
                   <TableHead className="text-primary-foreground">Date</TableHead>
                   <TableHead className="text-primary-foreground">Check-in Time</TableHead>
                   <TableHead className="text-primary-foreground">Status</TableHead>
@@ -49,21 +51,24 @@ export default function ReportsTable({ records = [], isLoading = false }) {
                     "Unknown Student"
 
                   const studentId = record.studentId || record.student?.student_id || "—"
+                  const section = record.student?.section || "—"
 
-                  let className = record.class
-                  if (!className && record.session?.teacherClass) {
-                    const tc = record.session.teacherClass
-                    if (tc.class_name) {
-                      className = tc.class_name
-                    } else if (tc.class_code && tc.subject_name) {
-                      className = `${tc.class_code} - ${tc.subject_name}`
-                    } else {
-                      className = tc.subject_name || tc.class_code || "Unknown Class"
-                    }
+                  // Class code column (short code only)
+                  let classCode = record.session?.teacherClass?.class_code || ""
+                  if (!classCode && record.class) {
+                    classCode = record.class.split(" - ")[0] || record.class
                   }
-                  if (!className) className = "Unknown Class"
+                  if (!classCode) classCode = "—"
 
-                  // Date column — date only
+                  // Subject name column
+                  let subjectName = record.session?.teacherClass?.subject_name || ""
+                  if (!subjectName && record.class) {
+                    const parts = record.class.split(" - ")
+                    subjectName = parts.length > 1 ? parts.slice(1).join(" - ") : ""
+                  }
+                  if (!subjectName) subjectName = "—"
+
+                  // Date column
                   let formattedDate = "—"
                   const rawDate = record.date || record.checked_in_at
                   if (rawDate) {
@@ -75,7 +80,7 @@ export default function ReportsTable({ records = [], isLoading = false }) {
                     }
                   }
 
-                  // Check-in time column — time only, "—" for absent
+                  // Check-in time column
                   let checkInTime = "—"
                   if (record.checked_in_time) {
                     checkInTime = record.checked_in_time
@@ -92,7 +97,9 @@ export default function ReportsTable({ records = [], isLoading = false }) {
                     <TableRow key={record.id}>
                       <TableCell className="font-medium">{studentName}</TableCell>
                       <TableCell>{studentId}</TableCell>
-                      <TableCell>{className}</TableCell>
+                      <TableCell>{section}</TableCell>
+                      <TableCell>{classCode}</TableCell>
+                      <TableCell>{subjectName}</TableCell>
                       <TableCell>{formattedDate}</TableCell>
                       <TableCell className="text-gray-500">{checkInTime}</TableCell>
                       <TableCell>

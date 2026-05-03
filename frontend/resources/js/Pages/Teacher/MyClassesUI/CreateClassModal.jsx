@@ -29,6 +29,7 @@ export default function CreateClassModal({ isOpen, onClose }) {
   })
   const [processing, setProcessing] = useState(false)
   const [errors, setErrors] = useState({})
+  const [section, setSection] = useState("")
 
   // Schedule Builder States
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -69,6 +70,16 @@ export default function CreateClassModal({ isOpen, onClose }) {
     setData((prev) => ({ ...prev, [field]: value }))
   }
 
+  // Auto-build the class_name from class_code and section
+  useEffect(() => {
+    const code = data.class_code || ""
+    const sec = section || ""
+    const newClassName = sec ? `${code} - ${sec}`.trim() : code
+    if (data.class_name !== newClassName) {
+      updateField("class_name", newClassName)
+    }
+  }, [data.class_code, section, data.class_name])
+
   const resetForm = () => {
     setData({
       class_code: "",
@@ -82,6 +93,7 @@ export default function CreateClassModal({ isOpen, onClose }) {
     setSelectedDays([])
     setStartTime("")
     setEndTime("")
+    setSection("")
   }
 
   useEffect(() => {
@@ -128,13 +140,19 @@ export default function CreateClassModal({ isOpen, onClose }) {
             </div>
 
             <div>
-              <Label htmlFor="class_name">Class Name (Optional)</Label>
+              <Label htmlFor="section">Section</Label>
               <Input
-                id="class_name"
-                placeholder="e.g., CS 101 - Section A"
-                value={data.class_name}
-                onChange={(e) => updateField("class_name", e.target.value)}
+                id="section"
+                placeholder="e.g., A or 1"
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Class name will be formatted as:{" "}
+                <span className="font-semibold">
+                  {data.class_name || "SUBJECT CODE - SECTION"}
+                </span>
+              </p>
             </div>
 
             <div>

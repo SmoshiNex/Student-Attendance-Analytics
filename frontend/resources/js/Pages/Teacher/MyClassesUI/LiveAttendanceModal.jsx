@@ -290,11 +290,28 @@ export default function LiveAttendanceModal({
           <DialogHeader>
             <div className="flex-1">
               <DialogTitle>Live Attendance Session</DialogTitle>
-              <p className="text-sm text-gray-500">
-                {classData?.class_code} - {classData?.subject_name}
-              </p>
+              {/* Subject code + subject name */}
+              <div className="flex flex-wrap items-center gap-2 mt-1">
+                {classData?.class_code && (
+                  <span className="inline-flex items-center px-2 py-0.5 rounded bg-gray-100 text-xs font-semibold text-gray-700 border border-gray-200">
+                    {classData.class_code}
+                  </span>
+                )}
+                {classData?.subject_name && (
+                  <p className="text-sm text-gray-700 font-medium">
+                    {classData.subject_name}
+                  </p>
+                )}
+              </div>
+              {/* Teacher name */}
+              {(classData?.teacher_first_name || classData?.teacher_last_name) && (
+                <p className="text-xs text-gray-500 mt-0.5">
+                  Instructor: {classData.teacher_first_name} {classData.teacher_last_name}
+                </p>
+              )}
+              {/* Session started time */}
               {session && (
-                <p className="text-xs text-gray-400">
+                <p className="text-xs text-gray-400 mt-0.5">
                   Started:{" "}
                   {new Date(session.started_at).toLocaleTimeString("en-US", {
                     hour: "2-digit",

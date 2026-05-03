@@ -474,11 +474,13 @@ class TeacherClass
         // SQL FEATURE: SUB QUERY (3 of 3)
         // Fetch all classes for this teacher with the count of enrolled students per class
         $query = "SELECT c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at,
-                         COUNT(cs.student_id) AS students_enrolled
+                         COUNT(cs.student_id) AS students_enrolled,
+                         t.first_name AS teacher_first_name, t.last_name AS teacher_last_name
                   FROM {$this->table} c
                   LEFT JOIN class_student cs ON cs.teacher_class_id = c.id
+                  INNER JOIN teachers t ON t.id = c.teacher_id
                   WHERE c.teacher_id = :teacher_id
-                  GROUP BY c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at
+                  GROUP BY c.id, c.teacher_id, c.class_code, c.class_name, c.subject_name, c.schedule, c.room, c.enrollment_code, c.created_at, c.updated_at, t.first_name, t.last_name
                   ORDER BY c.id DESC";
 
         $stmt = $this->conn->prepare($query);

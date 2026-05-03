@@ -578,7 +578,7 @@ class Attendance
         ];
     }
 
-    public function getStudentHistory($studentPkId)
+    public function getStudentHistory($studentPkId, $filters = [])
     {
         // ============================================================
         // STUDENT DASHBOARD — ATTENDANCE RATE CALCULATION
@@ -589,6 +589,23 @@ class Attendance
         //   present+late records by total records × 100.
         //   Also powers the full Attendance History page.
         // ============================================================
+        $params = [':student_id' => (int)$studentPkId];
+        $where = ["ar.student_id = :student_id"];
+
+        $classId = isset($filters['class_id']) ? (int)$filters['class_id'] : 0;
+        if ($classId > 0) {
+            $where[] = 'c.id = :class_id';
+            $params[':class_id'] = $classId;
+        }
+
+        $date = trim((string)($filters['date'] ?? ''));
+        if ($date !== '' && preg_match('/^\d{4}-\d{2}-\d{2}$/', $date)) {
+            $where[] = 'DATE(COALESCE(ar.checked_in_at, ar.created_at)) = :report_date';
+            $params[':report_date'] = $date;
+        }
+
+        $whereSql = 'WHERE ' . implode(' AND ', $where);
+
         $historyQuery = "SELECT ar.id, ar.status, ar.checked_in_at,
                                 DATE_FORMAT(COALESCE(ar.checked_in_at, ar.created_at), '%M %d, %Y %h:%i %p') AS checked_in_at_formatted,
                                 COALESCE(
@@ -608,15 +625,24 @@ class Attendance
                          INNER JOIN {$this->sessionTable} s ON s.id = ar.attendance_session_id
                          INNER JOIN {$this->classTable} c ON c.id = s.teacher_class_id
                          INNER JOIN teachers t ON t.id = c.teacher_id
-                         WHERE ar.student_id = :student_id
+                         {$whereSql}
                          ORDER BY COALESCE(ar.checked_in_at, ar.created_at) DESC";
 
         $historyStmt = $this->conn->prepare($historyQuery);
-        $historyStmt->execute([':student_id' => (int)$studentPkId]);
+        $historyStmt->execute($params);
+
+        $classesQuery = "SELECT c.id, c.class_code, c.class_name, c.subject_name
+                         FROM {$this->classStudentTable} cs
+                         INNER JOIN {$this->classTable} c ON c.id = cs.teacher_class_id
+                         WHERE cs.student_id = :student_id
+                         ORDER BY c.subject_name ASC, c.class_code ASC";
+        $classesStmt = $this->conn->prepare($classesQuery);
+        $classesStmt->execute([':student_id' => (int)$studentPkId]);
 
         return [
             'status' => 'success',
             'records' => $historyStmt->fetchAll(PDO::FETCH_ASSOC),
+            'classes' => $classesStmt->fetchAll(PDO::FETCH_ASSOC),
         ];
     }
 
@@ -641,7 +667,7 @@ class Attendance
 
         // Fetch all attendance records across all sessions for this teacher's classes joined with student and class info — supports optional class and date filters
         $query = "SELECT ar.id, ar.status, ar.checked_in_at, ar.created_at,
-                         s.id AS student_pk_id, s.student_id, s.first_name, s.last_name,
+                         s.id AS student_pk_id, s.student_id, s.first_name, s.last_name, s.section,
                          c.id AS class_id, c.class_code, c.class_name, c.subject_name
                   FROM {$this->recordTable} ar
                   INNER JOIN {$this->sessionTable} sess ON sess.id = ar.attendance_session_id
@@ -689,6 +715,7 @@ class Attendance
                     'student_id' => $row['student_id'] ?? null,
                     'first_name' => $row['first_name'] ?? null,
                     'last_name' => $row['last_name'] ?? null,
+                    'section' => $row['section'] ?? null,
                 ],
                 'session' => [
                     'teacherClass' => [

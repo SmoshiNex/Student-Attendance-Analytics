@@ -42,15 +42,16 @@ export default function ReportsFilters({
                 <SelectItem value="all">All Classes</SelectItem>
                 {classes.map((cls) => {
                   if (!cls.id) return null
-                  // Format class name: class_name OR (class_code - subject_name) OR subject_name OR class_code
-                  let displayName = cls.class_name
-                  if (!displayName) {
-                    if (cls.class_code && cls.subject_name) {
-                      displayName = `${cls.class_code} - ${cls.subject_name}`
-                    } else {
-                      displayName =
-                        cls.subject_name || cls.class_code || "Unnamed Class"
-                    }
+                  // Format class name: class_code - subject_name (class_name)
+                  let displayName = ""
+                  if (cls.class_code && cls.subject_name) {
+                    displayName = `${cls.class_code} - ${cls.subject_name}`
+                  } else {
+                    displayName = cls.subject_name || cls.class_code || "Unnamed Class"
+                  }
+                  
+                  if (cls.class_name && cls.class_name !== displayName && !displayName.includes(cls.class_name)) {
+                    displayName = `${displayName} (${cls.class_name})`
                   }
                   return (
                     <SelectItem key={cls.id} value={cls.id.toString()}>

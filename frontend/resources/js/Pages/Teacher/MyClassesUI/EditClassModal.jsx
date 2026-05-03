@@ -29,6 +29,7 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
   })
   const [processing, setProcessing] = useState(false)
   const [errors, setErrors] = useState({})
+  const [section, setSection] = useState("")
 
   // Schedule Builder States
   const DAYS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
@@ -66,6 +67,16 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
   }, [selectedDays, startTime, endTime])
 
   useEffect(() => {
+    let initialSection = ""
+    if (classItem?.class_name && classItem?.class_code) {
+      if (classItem.class_name.startsWith(classItem.class_code + " - ")) {
+        initialSection = classItem.class_name.substring(classItem.class_code.length + 3)
+      } else if (classItem.class_name !== classItem.class_code) {
+        initialSection = classItem.class_name
+      }
+    }
+    setSection(initialSection)
+
     setData({
       class_code: classItem?.class_code || "",
       class_name: classItem?.class_name || "",
@@ -79,6 +90,16 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
 
   const updateField = (field, value) =>
     setData((prev) => ({ ...prev, [field]: value }))
+
+  // Auto-build the class_name from class_code and section
+  useEffect(() => {
+    const code = data.class_code || ""
+    const sec = section || ""
+    const newClassName = sec ? `${code} - ${sec}`.trim() : code
+    if (data.class_name !== newClassName) {
+      updateField("class_name", newClassName)
+    }
+  }, [data.class_code, section, data.class_name])
 
   const handleSubmit = async (e) => {
     e.preventDefault()
@@ -121,13 +142,19 @@ export default function EditClassModal({ isOpen, onClose, classItem }) {
             </div>
 
             <div>
-              <Label htmlFor="edit_class_name">Class Name (Optional)</Label>
+              <Label htmlFor="edit_section">Section</Label>
               <Input
-                id="edit_class_name"
-                placeholder="e.g., CS 101 - Section A"
-                value={data.class_name}
-                onChange={(e) => updateField("class_name", e.target.value)}
+                id="edit_section"
+                placeholder="e.g., A or 1"
+                value={section}
+                onChange={(e) => setSection(e.target.value)}
               />
+              <p className="text-xs text-gray-500 mt-1">
+                Class name will be formatted as:{" "}
+                <span className="font-semibold">
+                  {data.class_name || "SUBJECT CODE - SECTION"}
+                </span>
+              </p>
             </div>
 
             <div>

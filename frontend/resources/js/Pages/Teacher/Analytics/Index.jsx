@@ -189,57 +189,151 @@ function exportPdf(
   })
 }
 
-function exportCsv(students, className, filteredTrend, recordsBySession) {
-  // Header: summary columns + one column per session
-  const sessionHeaders = filteredTrend.map(
-    (s, i) => `"#${i + 1} ${s.label} (${s.started_at}) - Status"`,
-  )
-  const timeHeaders = filteredTrend.map(
-    (s, i) => `"#${i + 1} ${s.label} - Check-in Time"`,
-  )
-  const header = [
-    "Student Name",
-    "Student ID",
-    "Present",
-    "Late",
-    "Absent",
-    "Attendance Rate",
-    "Status",
-    ...sessionHeaders,
-    ...timeHeaders,
-  ]
-
-  const rows = students.map((s) => {
-    const summary = [
-      toTitleCase(s.student_name),
-      s.student_id,
-      s.present,
-      s.late,
-      s.absent,
-      `${s.attendance_rate}%`,
-      s.at_risk ? "At Risk" : "Good",
-    ]
-    const statuses = filteredTrend.map(
-      (session) =>
-        recordsBySession[session.session_id]?.[s.id]?.status || "absent",
-    )
-    const checkTimes = filteredTrend.map(
-      (session) =>
-        recordsBySession[session.session_id]?.[s.id]?.checked_in_at || "—",
-    )
-    return [...summary, ...statuses, ...checkTimes]
-      .map((v) => `"${String(v).replace(/"/g, '""')}"`)
-      .join(",")
+// ─── helpers ─────────────────────────────────────────────────────────────────
+function xlsxWrite(wb, filename) {
+  import("xlsx").then((XLSX) => XLSX.writeFile(wb, filename))
+}
+function xlsxBook(sheetName, aoa) {
+  return import("xlsx").then((XLSX) => {
+    const ws = XLSX.utils.aoa_to_sheet(aoa)
+    const wb = XLSX.utils.book_new()
+    XLSX.utils.book_append_sheet(wb, ws, sheetName)
+    return { XLSX, wb }
   })
+}
+function pdfHeader(doc, title, dateFrom, dateTo) {
+  doc.setFontSize(16)
+  doc.text(title, 14, 16)
+  doc.setFontSize(9)
+  doc.setTextColor(120)
+  const range = dateFrom || dateTo ? ` · ${dateFrom || ""} → ${dateTo || "today"}` : " · All time"
+  doc.text(`Generated: ${new Date().toLocaleString()}${range}`, 14, 22)
+  doc.setTextColor(0)
+}
+const HEAD_STYLE = { fillColor: [11, 43, 70], textColor: 255, fontStyle: "bold" }
 
-  const csv = [header.join(","), ...rows].join("\n")
-  const blob = new Blob([csv], { type: "text/csv" })
-  const url = URL.createObjectURL(blob)
-  const a = document.createElement("a")
-  a.href = url
-  a.download = `${className || "class"}-attendance.csv`
-  a.click()
-  URL.revokeObjectURL(url)
+// ─── OVERVIEW exports ─────────────────────────────────────────────────────────
+function exportOverviewExcel(ov, classLabel) {
+  xlsxBook("Overview", [
+    ["Metric", "Value"],
+    ["Avg Attendance Rate", `${ov.avg_attendance_rate}%`],
+    ["Sessions Held", ov.total_sessions],
+    ["Students Enrolled", ov.total_enrolled],
+    ["Highest Session Rate", `${ov.best_session_rate}%`],
+    ["Lowest Session Rate", `${ov.worst_session_rate}%`],
+    ["Total Present", ov.total_present],
+    ["Total Late", ov.total_late],
+    ["Total Absent", ov.total_absent],
+  ]).then(({ XLSX, wb }) => XLSX.writeFile(wb, `${classLabel || "class"}-overview.xlsx`))
+}
+function exportOverviewPdf(ov, classLabel, dateFrom, dateTo) {
+  import("jspdf").then(({ default: jsPDF }) =>
+    import("jspdf-autotable").then(({ applyPlugin, autoTable }) => {
+      applyPlugin(jsPDF)
+      const doc = new jsPDF()
+      pdfHeader(doc, `Overview — ${classLabel}`, dateFrom, dateTo)
+      autoTable(doc, {
+        startY: 28,
+        head: [["Metric", "Value"]],
+        body: [
+          ["Avg Attendance Rate", `${ov.avg_attendance_rate}%`],
+          ["Sessions Held", ov.total_sessions],
+          ["Students Enrolled", ov.total_enrolled],
+          ["Highest Session Rate", `${ov.best_session_rate}%`],
+          ["Lowest Session Rate", `${ov.worst_session_rate}%`],
+          ["Total Present", ov.total_present],
+          ["Total Late", ov.total_late],
+          ["Total Absent", ov.total_absent],
+        ],
+        theme: "grid",
+        styles: { fontSize: 10 },
+        headStyles: HEAD_STYLE,
+      })
+      doc.save(`${classLabel || "class"}-overview.pdf`)
+    }),
+  )
+}
+
+// ─── SESSION TREND exports ────────────────────────────────────────────────────
+function exportTrendExcel(filteredTrend, classLabel) {
+  xlsxBook("Session Trend", [
+    ["#", "Session", "Date", "Present", "Late", "Absent", "Rate %"],
+    ...filteredTrend.map((r, i) => [
+      i + 1, r.label, String(r.started_at).slice(0, 10),
+      r.present, r.late, r.absent, `${r.attendance_rate}%`,
+    ]),
+  ]).then(({ XLSX, wb }) => XLSX.writeFile(wb, `${classLabel || "class"}-trend.xlsx`))
+}
+function exportTrendPdf(filteredTrend, classLabel, dateFrom, dateTo) {
+  import("jspdf").then(({ default: jsPDF }) =>
+    import("jspdf-autotable").then(({ applyPlugin, autoTable }) => {
+      applyPlugin(jsPDF)
+      const doc = new jsPDF({ orientation: "landscape" })
+      pdfHeader(doc, `Session Trend — ${classLabel}`, dateFrom, dateTo)
+      autoTable(doc, {
+        startY: 28,
+        head: [["#", "Session", "Date", "Present", "Late", "Absent", "Rate %"]],
+        body: filteredTrend.map((r, i) => [
+          i + 1, r.label, String(r.started_at).slice(0, 10),
+          r.present, r.late, r.absent, `${r.attendance_rate}%`,
+        ]),
+        theme: "grid",
+        styles: { fontSize: 9 },
+        headStyles: HEAD_STYLE,
+      })
+      doc.save(`${classLabel || "class"}-trend.pdf`)
+    }),
+  )
+}
+
+// ─── BREAKDOWN exports ────────────────────────────────────────────────────────
+function exportBreakdownExcel(ov, classLabel) {
+  const total = ov.total_present + ov.total_late + ov.total_absent
+  const pct = (n) => (total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "0%")
+  xlsxBook("Breakdown", [
+    ["Status", "Count", "Percentage"],
+    ["Present", ov.total_present, pct(ov.total_present)],
+    ["Late", ov.total_late, pct(ov.total_late)],
+    ["Absent", ov.total_absent, pct(ov.total_absent)],
+  ]).then(({ XLSX, wb }) => XLSX.writeFile(wb, `${classLabel || "class"}-breakdown.xlsx`))
+}
+function exportBreakdownPdf(ov, classLabel, dateFrom, dateTo) {
+  const total = ov.total_present + ov.total_late + ov.total_absent
+  const pct = (n) => (total > 0 ? `${((n / total) * 100).toFixed(1)}%` : "0%")
+  import("jspdf").then(({ default: jsPDF }) =>
+    import("jspdf-autotable").then(({ applyPlugin, autoTable }) => {
+      applyPlugin(jsPDF)
+      const doc = new jsPDF()
+      pdfHeader(doc, `Overall Breakdown — ${classLabel}`, dateFrom, dateTo)
+      autoTable(doc, {
+        startY: 28,
+        head: [["Status", "Count", "Percentage"]],
+        body: [
+          ["Present", ov.total_present, pct(ov.total_present)],
+          ["Late", ov.total_late, pct(ov.total_late)],
+          ["Absent", ov.total_absent, pct(ov.total_absent)],
+        ],
+        theme: "grid",
+        styles: { fontSize: 10 },
+        headStyles: HEAD_STYLE,
+      })
+      doc.save(`${classLabel || "class"}-breakdown.pdf`)
+    }),
+  )
+}
+
+// ─── STUDENT SUMMARY exports ──────────────────────────────────────────────────
+function exportStudentExcel(students, className, filteredTrend, recordsBySession) {
+  const sessionCols = filteredTrend.map((s, i) => `#${i + 1} ${s.label} - Status`)
+  const timeCols = filteredTrend.map((s, i) => `#${i + 1} ${s.label} - Check-in`)
+  const header = ["Student Name", "Student ID", "Present", "Late", "Absent", "Rate", "Status", ...sessionCols, ...timeCols]
+  const rows = students.map((s) => {
+    const statuses = filteredTrend.map((sess) => recordsBySession[sess.session_id]?.[s.id]?.status || "absent")
+    const times = filteredTrend.map((sess) => recordsBySession[sess.session_id]?.[s.id]?.checked_in_at || "—")
+    return [toTitleCase(s.student_name), s.student_id, s.present, s.late, s.absent, `${s.attendance_rate}%`, s.at_risk ? "At Risk" : "Good", ...statuses, ...times]
+  })
+  xlsxBook("Student Summary", [header, ...rows])
+    .then(({ XLSX, wb }) => XLSX.writeFile(wb, `${className || "class"}-attendance.xlsx`))
 }
 
 export default function TeacherAnalytics() {
@@ -470,7 +564,7 @@ export default function TeacherAnalytics() {
     return diff > 0 ? "up" : "down"
   }, [allTrend])
 
-  const atRiskCount = allStudents.filter((s) => s.at_risk).length
+  const atRiskCount = filteredStudents.filter((s) => s.at_risk).length
   const hasActiveFilters =
     dateFrom ||
     dateTo ||
@@ -766,6 +860,22 @@ export default function TeacherAnalytics() {
 
           {!loading && filteredOverview && (
             <>
+              {/* Overview export bar */}
+              <div className="flex items-center justify-end gap-2">
+                <span className="text-xs text-gray-400 mr-1">Overview:</span>
+                <button
+                  onClick={() => exportOverviewPdf(filteredOverview, csvLabel, dateFrom, dateTo)}
+                  className="flex items-center gap-1 text-xs text-white bg-gray-800 hover:bg-black rounded-lg px-2.5 py-1.5"
+                >
+                  <Download className="w-3 h-3" /> PDF
+                </button>
+                <button
+                  onClick={() => exportOverviewExcel(filteredOverview, csvLabel)}
+                  className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg px-2.5 py-1.5 hover:bg-gray-50"
+                >
+                  <Download className="w-3 h-3" /> Excel
+                </button>
+              </div>
               {/* Stat cards */}
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
@@ -787,8 +897,15 @@ export default function TeacherAnalytics() {
                   color="gray"
                 />
                 <StatCard
-                  label="Students Enrolled"
-                  value={filteredOverview.total_enrolled}
+                  label="Students Shown"
+                  value={filteredStudents.length}
+                  sub={
+                    studentStatus === "at_risk"
+                      ? "At-risk only"
+                      : studentStatus === "good"
+                        ? "Good standing only"
+                        : `of ${filteredOverview.total_enrolled} enrolled`
+                  }
                   icon={Users}
                   color="gray"
                 />
@@ -852,12 +969,25 @@ export default function TeacherAnalytics() {
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
                   {filteredTrend.length > 0 && (
                     <div className="lg:col-span-2 bg-white rounded-xl border border-gray-200 p-5">
-                      <h2 className="text-base font-semibold text-gray-900 mb-1">
-                        Session-by-Session Trend
-                      </h2>
+                      <div className="flex items-center justify-between mb-1">
+                        <h2 className="text-base font-semibold text-gray-900">Session-by-Session Trend</h2>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => exportTrendPdf(filteredTrend, csvLabel, dateFrom, dateTo)}
+                            className="flex items-center gap-1 text-xs text-white bg-gray-800 hover:bg-black rounded-lg px-2.5 py-1.5"
+                          >
+                            <Download className="w-3 h-3" /> PDF
+                          </button>
+                          <button
+                            onClick={() => exportTrendExcel(filteredTrend, csvLabel)}
+                            className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg px-2.5 py-1.5 hover:bg-gray-50"
+                          >
+                            <Download className="w-3 h-3" /> Excel
+                          </button>
+                        </div>
+                      </div>
                       <p className="text-xs text-gray-400 mb-4">
-                        Present / Late / Absent counts (bars) + Attendance Rate
-                        % (line)
+                        Present / Late / Absent counts (bars) + Attendance Rate % (line)
                       </p>
                       <ResponsiveContainer width="100%" height={240}>
                         <ComposedChart
@@ -923,9 +1053,23 @@ export default function TeacherAnalytics() {
                     filteredOverview.total_absent >
                     0 && (
                     <div className="bg-white rounded-xl border border-gray-200 p-5 flex flex-col">
-                      <h2 className="text-base font-semibold text-gray-900 mb-1">
-                        Overall Breakdown
-                      </h2>
+                      <div className="flex items-center justify-between mb-1">
+                        <h2 className="text-base font-semibold text-gray-900">Overall Breakdown</h2>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => exportBreakdownPdf(filteredOverview, csvLabel, dateFrom, dateTo)}
+                            className="flex items-center gap-1 text-xs text-white bg-gray-800 hover:bg-black rounded-lg px-2.5 py-1.5"
+                          >
+                            <Download className="w-3 h-3" /> PDF
+                          </button>
+                          <button
+                            onClick={() => exportBreakdownExcel(filteredOverview, csvLabel)}
+                            className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg px-2.5 py-1.5 hover:bg-gray-50"
+                          >
+                            <Download className="w-3 h-3" /> Excel
+                          </button>
+                        </div>
+                      </div>
                       <p className="text-xs text-gray-400 mb-4">
                         All sessions combined
                       </p>
@@ -983,7 +1127,7 @@ export default function TeacherAnalytics() {
                       </span>
                       <button
                         onClick={() =>
-                          exportCsv(
+                          exportStudentExcel(
                             filteredStudents,
                             csvLabel,
                             filteredTrend,
@@ -992,7 +1136,7 @@ export default function TeacherAnalytics() {
                         }
                         className="flex items-center gap-1 text-xs text-gray-600 hover:text-gray-900 border border-gray-300 rounded-lg px-2.5 py-1.5 hover:bg-gray-50"
                       >
-                        <Download className="w-3 h-3" /> Export CSV
+                        <Download className="w-3 h-3" /> Export Excel
                       </button>
                       <button
                         onClick={() =>

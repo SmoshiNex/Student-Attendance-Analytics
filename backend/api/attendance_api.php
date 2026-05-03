@@ -107,9 +107,14 @@ try {
             sendJsonResponse('error', 'Unauthorized', null, 401);
         }
 
+        $filters = [
+            'class_id' => $_GET['class_id'] ?? null,
+            'date' => $_GET['date'] ?? null,
+        ];
+
         $studentPkId = $auth->getStudentSessionId();
-        $result = $attendance->getStudentHistory($studentPkId);
-        sendJsonResponse('success', 'History fetched.', ['records' => $result['records'] ?? []]);
+        $result = $attendance->getStudentHistory($studentPkId, $filters);
+        sendJsonResponse('success', 'History fetched.', ['records' => $result['records'] ?? [], 'classes' => $result['classes'] ?? []]);
     }
 
     if ($action === 'student_analytics') {

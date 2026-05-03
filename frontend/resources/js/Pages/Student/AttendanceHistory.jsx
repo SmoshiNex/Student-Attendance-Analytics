@@ -10,13 +10,33 @@ import axios from "axios"
 import { authApiUrl, attendanceApiUrl } from "@/lib/nativeApi"
 import { useNavigate } from "react-router-dom"
 import Header from "./DashboardUI/Header"
+import ReportsFilters from "@/Components/reports/ReportsFilters"
 
 export default function AttendanceHistory() {
   const navigate = useNavigate()
   const [records, setRecords] = useState([])
   const [loading, setLoading] = useState(true)
 
-  useEffect(() => {
+  const [classes, setClasses] = useState([])
+  
+  // Default to today's date (local time)
+  const today = new Date()
+  const todayString = new Date(today.getTime() - today.getTimezoneOffset() * 60000)
+    .toISOString()
+    .split("T")[0]
+
+  const [filters, setFilters] = useState({ class_id: "all", date: todayString })
+
+  const fetchRecords = (currentFilters) => {
+    setLoading(true)
+    const params = {}
+    if (currentFilters.class_id && currentFilters.class_id !== "all") {
+      params.class_id = currentFilters.class_id
+    }
+    if (currentFilters.date) {
+      params.date = currentFilters.date
+    }
+
     axios
       .get(authApiUrl("current_student"), { withCredentials: true })
       .then((res) => {
@@ -25,17 +45,43 @@ export default function AttendanceHistory() {
           return null
         }
         return axios.get(attendanceApiUrl("student_history"), {
+          params,
           withCredentials: true,
         })
       })
       .then((res) => {
-        if (res) setRecords(res.data?.records || [])
+        if (res) {
+          setRecords(res.data?.records || [])
+          setClasses(res.data?.classes || [])
+        }
       })
       .catch((err) => {
         if (err?.response?.status === 401) navigate("/", { replace: true })
       })
       .finally(() => setLoading(false))
+  }
+
+  useEffect(() => {
+    fetchRecords(filters)
   }, [navigate])
+
+  const handleClassChange = (value) => {
+    const nextFilters = { ...filters, class_id: value }
+    setFilters(nextFilters)
+    fetchRecords(nextFilters)
+  }
+
+  const handleDateChange = (value) => {
+    const nextFilters = { ...filters, date: value }
+    setFilters(nextFilters)
+    fetchRecords(nextFilters)
+  }
+
+  const clearFilters = () => {
+    const cleared = { class_id: "all", date: "" }
+    setFilters(cleared)
+    fetchRecords(cleared)
+  }
 
   const getStatusIcon = (status) => {
     if (status === "present")
@@ -52,13 +98,8 @@ export default function AttendanceHistory() {
     return `${base} bg-red-100 text-red-700`
   }
 
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <p className="text-gray-500">Loading...</p>
-      </div>
-    )
-  }
+  // Let the header render immediately so the screen doesn't just show "Loading..."
+  // We'll show a loading spinner inside the main content area if needed.
 
   return (
     <div className="min-h-screen bg-gray-50 student-shell">
@@ -72,7 +113,20 @@ export default function AttendanceHistory() {
           <p className="text-sm text-gray-500">View your attendance records</p>
         </div>
 
-        {records.length > 0 ? (
+        <ReportsFilters
+          classes={classes}
+          filters={filters}
+          onClassChange={handleClassChange}
+          onDateChange={handleDateChange}
+          onClear={clearFilters}
+          isLoading={loading}
+        />
+
+        {loading ? (
+          <div className="flex items-center justify-center py-12">
+            <p className="text-gray-500">Loading records...</p>
+          </div>
+        ) : records.length > 0 ? (
           <div className="space-y-3 sm:space-y-4">
             {records.map((record) => (
               <div
@@ -125,7 +179,9 @@ export default function AttendanceHistory() {
               No Attendance Records
             </h3>
             <p className="text-sm text-gray-500">
-              You haven't checked in to any classes yet.
+              {filters.class_id !== "all" || filters.date
+                ? "No attendance records found for the selected filters."
+                : "You haven't checked in to any classes yet."}
             </p>
           </div>
         )}

@@ -309,17 +309,18 @@ export default function StudentAnalytics() {
         {rawSummary && (
           <>
             {/* Summary cards */}
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
               <StatCard
                 label="My Overall Attendance Rate"
                 value={`${rawSummary.overall_rate}%`}
-                sub="Across all enrolled classes"
+                sub="Across all enrolled classes · Late counts as attended"
                 icon={TrendingUp}
                 color={rawSummary.overall_rate >= 75 ? "green" : "red"}
               />
-              <StatCard label="Enrolled Classes" value={rawSummary.total_classes} sub="Classes you are in" icon={BookOpen} color="blue" />
-              <StatCard label="Times Present" value={rawSummary.total_present} sub="Including on-time check-ins" icon={CheckCircle} color="green" />
-              <StatCard label="Times Absent"  value={rawSummary.total_absent}  sub="Missed sessions" icon={AlertTriangle} color={rawSummary.total_absent > 0 ? "red" : "gray"} />
+              <StatCard label="Enrolled Classes"  value={rawSummary.total_classes}  sub="Classes you are in"       icon={BookOpen}      color="blue"  />
+              <StatCard label="Times Present"      value={rawSummary.total_present}  sub="On-time check-ins"        icon={CheckCircle}   color="green" />
+              <StatCard label="Times Late"         value={rawSummary.total_late}     sub="After allowed check-in time" icon={Clock}      color={rawSummary.total_late > 0 ? "yellow" : "gray"} />
+              <StatCard label="Times Absent"       value={rawSummary.total_absent}   sub="Missed sessions"          icon={AlertTriangle} color={rawSummary.total_absent > 0 ? "red" : "gray"} />
             </div>
 
             {/* At-risk warning */}
