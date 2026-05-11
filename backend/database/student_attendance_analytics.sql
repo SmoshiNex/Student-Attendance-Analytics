@@ -1,6 +1,4 @@
 -- Student Attendance Analytics (native PHP backend)
--- Regenerated to match current backend class/API contracts
--- and Laravel reference architecture for attendance + notifications.
 
 CREATE DATABASE IF NOT EXISTS student_attendance_analytics
 	CHARACTER SET utf8mb4
