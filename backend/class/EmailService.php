@@ -249,6 +249,11 @@ class EmailService
             return trim((string) $_SERVER[$key]);
         }
 
+        $dotEnvValue = $this->getDotEnvValue($key);
+        if ($dotEnvValue !== null && $dotEnvValue !== '') {
+            return $dotEnvValue;
+        }
+
         return $default;
     }
 
