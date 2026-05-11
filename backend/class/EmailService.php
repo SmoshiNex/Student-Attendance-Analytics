@@ -236,14 +236,17 @@ class EmailService
 
     private function readEnvValue(string $key, ?string $default = null): ?string
     {
-        $processValue = getenv($key);
-        if ($processValue !== false && trim((string) $processValue) !== '') {
-            return trim((string) $processValue);
+        $value = getenv($key);
+        if ($value !== false && trim((string) $value) !== '') {
+            return trim((string) $value);
         }
 
-        $dotEnvValue = $this->getDotEnvValue($key);
-        if ($dotEnvValue !== null && $dotEnvValue !== '') {
-            return $dotEnvValue;
+        if (isset($_ENV[$key]) && trim((string) $_ENV[$key]) !== '') {
+            return trim((string) $_ENV[$key]);
+        }
+
+        if (isset($_SERVER[$key]) && trim((string) $_SERVER[$key]) !== '') {
+            return trim((string) $_SERVER[$key]);
         }
 
         return $default;
